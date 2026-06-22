@@ -1,0 +1,8 @@
+BEGIN;
+
+CREATE TABLE init(
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(150)
+);
+
+COMMIT;
