@@ -8,8 +8,8 @@ $repositories = @(
     "https://github.com/AetherGases/aether-web-administrative.git",
     "https://github.com/AetherGases/aether-core-api.git",
     "https://github.com/AetherGases/aether-mobile.git",
-    "https://github.com/AetherGases/aether-ai-gateway.git",
-    "https://github.com/AetherGases/aether-ai-sdk.git",
+    "https://github.com/AetherGases/aeko-core-api.git",
+    "https://github.com/AetherGases/aeko-sdk.git",
     "https://github.com/AetherGases/aether-user-experience"
 )
 
