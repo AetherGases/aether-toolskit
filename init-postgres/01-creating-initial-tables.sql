@@ -13,10 +13,15 @@ CREATE TABLE plan (
 CREATE TABLE address (
     id SERIAL,
     zip_code CHAR(8),
+    street VARCHAR(255),
+    neighborhood VARCHAR(255),
+    city VARCHAR(100),
+    state CHAR(2),
     number INTEGER,
     complement VARCHAR(255),
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
+
     CONSTRAINT pk_address PRIMARY KEY (id)
 );
 
@@ -24,7 +29,7 @@ CREATE TABLE enterprise (
     id SERIAL,
     name VARCHAR(255),
     trade_name VARCHAR(255),
-    cnjp CHAR(14),
+    cnpj CHAR(14) UNIQUE NOT NULL,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
     id_address INTEGER,
@@ -42,16 +47,17 @@ CREATE TABLE plan_subscription (
     CONSTRAINT pk_plan_subscription PRIMARY KEY (id)
 );
 
-CREATE TABLE payment (
-    id SERIAL,
-    value NUMERIC,
-    term TIMESTAMP,
-    status VARCHAR(50),
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP,
-    id_plan_subscription INTEGER,
-    CONSTRAINT pk_payment PRIMARY KEY (id)
-);
+  CREATE TABLE payment (
+      id SERIAL,
+      value NUMERIC,
+      term TIMESTAMP,
+    status VARCHAR(20) NOT NULL
+    CHECK (status IN ('PENDING', 'PAID', 'OVERDUE', 'CANCELED')),
+      created_at TIMESTAMP,
+      updated_at TIMESTAMP,
+      id_plan_subscription INTEGER,
+      CONSTRAINT pk_payment PRIMARY KEY (id)
+  );
 
 CREATE TABLE unit (
     id SERIAL,
@@ -77,6 +83,7 @@ CREATE TABLE department (
 
 CREATE TABLE permission_group (
     id SERIAL,
+    name VARCHAR(50),
     description VARCHAR(255),
     CONSTRAINT pk_permission_group PRIMARY KEY (id)
 );
@@ -123,7 +130,7 @@ CREATE TABLE gas_reduction (
     estimated_roi NUMERIC,
     initial_emission NUMERIC,
     current_emission NUMERIC,
-    unit VARCHAR(50),
+    measure_unit VARCHAR(50),
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
     id_gas INTEGER,
@@ -134,7 +141,7 @@ CREATE TABLE projection_years (
     id SERIAL,
     prediction NUMERIC,
     actual NUMERIC,
-    year VARCHAR(255),
+    year INTEGER,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
     id_gas_reduction INTEGER,
@@ -143,7 +150,7 @@ CREATE TABLE projection_years (
 
 CREATE TABLE administrator (
     id SERIAL,
-    email VARCHAR(255),
+    email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255),
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
@@ -153,21 +160,27 @@ CREATE TABLE administrator (
 CREATE TABLE storage_file (
     id SERIAL,
     name VARCHAR(255),
-    path VARCHAR(255),
+    path VARCHAR(400),
+    size_bytes BIGINT,
+    file_type VARCHAR(12) NOT NULL
+        CHECK (file_type IN ('PNG', 'JPG', 'JPEG', 'PDF', 'DOC', 'DOCX')),
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
+
     CONSTRAINT pk_storage_file PRIMARY KEY (id)
 );
 
 CREATE TABLE employee (
     id SERIAL,
     name VARCHAR(255),
-    email VARCHAR(255),
-    phone VARCHAR(20),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(15),
     password_hash VARCHAR(255),
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
     id_storage_file INTEGER,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
+    CHECK (status IN ('ACTIVE', 'INACTIVE', 'VACATION')),
     CONSTRAINT pk_employee PRIMARY KEY (id)
 );
 
