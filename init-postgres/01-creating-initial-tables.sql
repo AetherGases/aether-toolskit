@@ -1,6 +1,7 @@
 BEGIN;
 
 CREATE TABLE plan (
+    name VARCHAR(50),
     id SERIAL,
     description VARCHAR(255),
     price NUMERIC,
@@ -49,6 +50,7 @@ CREATE TABLE payment (
     status VARCHAR(50),
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
+    additional_use_value,
     id_plan_subscription INTEGER,
     CONSTRAINT pk_payment PRIMARY KEY (id)
 );
