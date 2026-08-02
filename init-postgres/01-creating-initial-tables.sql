@@ -25,6 +25,7 @@ CREATE TYPE CATEGORY_CLASSIFICATION AS ENUM (
 -- =========================================================
 
 CREATE TABLE plan (
+    name VARCHAR(50),
     id SERIAL,
     description VARCHAR(255),
     price NUMERIC,
@@ -74,6 +75,7 @@ CREATE TABLE payment (
     status PAYMENT_STATUS,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
+    additional_use_value NUMERIC,
     id_plan_subscription INTEGER,
     CONSTRAINT pk_payment PRIMARY KEY (id)
 );
@@ -374,9 +376,9 @@ CREATE INDEX idx_reduction_id_category ON reduction (id_category);
 -- Comentários
 -- =========================================================
 
-COMMENT ON COLUMN category.classification IS 'Indica se a categoria é upstream, downstream ou outra, conforme categorias de Scope 3 do GHG Protocol. Aplicável apenas quando a emissão pertence ao Scope 3.';
-COMMENT ON COLUMN emission.quantity_co2e IS 'Quantidade de emissão recebida do report de origem, já em toneladas métricas de CO2 equivalente (CO2e). A quantidade original do gás, quando necessária, pode ser derivada dividindo este valor pelo gwp correspondente em gas.gwp.';
-COMMENT ON COLUMN gas.is_biogenic IS 'Indica se as emissões do gás são de origem biogênica, conforme Parte 3 do template GHG.';
-COMMENT ON COLUMN gas.gwp IS 'Fator de Potencial de Aquecimento Global (Global Warming Potential) do gás, usado para converter quantidade física em CO2e.';
+COMMENT ON COLUMN category.classification IS 'Indicates whether the category is upstream, downstream, or another category, according to the GHG Protocol Scope 3 categories. Applicable only when the emission belongs to Scope 3.';
+COMMENT ON COLUMN emission.quantity_co2e IS 'Emission quantity received from the source report, already expressed in metric tons of CO2 equivalent (CO2e). The original gas quantity, when needed, can be derived by dividing this value by the corresponding GWP in gas.gwp.';
+COMMENT ON COLUMN gas.is_biogenic IS 'Indicates whether the gas emissions are of biogenic origin, according to Part 3 of the GHG template.';
+COMMENT ON COLUMN gas.gwp IS 'Global Warming Potential (GWP) factor of the gas, used to convert its physical quantity into CO2e.';
 
 COMMIT;
