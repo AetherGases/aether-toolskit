@@ -10,11 +10,6 @@ CREATE TYPE PAYMENT_STATUS AS ENUM (
     'WAITING'
 );
 
-CREATE TYPE REPORT_TYPE AS ENUM (
-    'INVENTORY',
-    'PARANA_CLIMATE_SEAL_SUBSCRIPTION'
-);
-
 CREATE TYPE CATEGORY_CLASSIFICATION AS ENUM (
     'DOWNSTREAM',
     'UPSTREAM'
@@ -195,26 +190,25 @@ CREATE TABLE gas (
     CONSTRAINT pk_gas PRIMARY KEY (id)
 );
 
--- report: informações descritivas do inventário (Parte 1 do template)
-CREATE TABLE report (
+-- inventory: informações descritivas do inventário (Parte 1 do template)
+CREATE TABLE inventory (
     id SERIAL,
     name VARCHAR(150) NOT NULL,
     description VARCHAR(150),
-    type REPORT_TYPE NOT NULL,
     consolidation_approach VARCHAR(100),
-    reporting_period_start DATE,
-    reporting_period_end DATE CHECK (reporting_period_end >= reporting_period_start),
+    inventorying_period_start DATE,
+    inventorying_period_end DATE CHECK (inventorying_period_end >= inventorying_period_start),
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_department INTEGER,
     id_storage_file INTEGER,
     id_owner_employee INTEGER,
     id_validator_employee INTEGER,
-    CONSTRAINT pk_report PRIMARY KEY (id)
+    CONSTRAINT pk_inventory PRIMARY KEY (id)
 );
 
 -- emission: dados de emissão de GEE (Parte 2 e Parte 3 do template)
--- quantity_co2e é recebido diretamente do report de origem (já convertido);
+-- quantity_co2e é recebido diretamente do inventory de origem (já convertido);
 -- a quantidade original do gás não é armazenada por decisão de negócio,
 -- pois pode ser obtida dividindo quantity_co2e pelo gwp do gás em gas.gwp.
 CREATE TABLE emission (
@@ -227,17 +221,17 @@ CREATE TABLE emission (
     id_gas INTEGER,
     id_scope INTEGER,
     id_category INTEGER,
-    id_report INTEGER,
+    id_inventory INTEGER,
     CONSTRAINT pk_emission PRIMARY KEY (id)
 );
 
--- reduction: iniciativas de redução de emissões, ligadas ao report e à categoria
+-- reduction: iniciativas de redução de emissões, ligadas ao inventory e à categoria
 CREATE TABLE reduction (
     id SERIAL,
     quantity_co2e NUMERIC NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
-    id_report INTEGER,
+    id_inventory INTEGER,
     id_category INTEGER,
     CONSTRAINT pk_reduction PRIMARY KEY (id)
 );
@@ -294,26 +288,26 @@ ALTER TABLE employee
     ADD CONSTRAINT fk_employee_storage_file
     FOREIGN KEY (id_storage_file) REFERENCES storage_file (id);
 
-ALTER TABLE report
-    ADD CONSTRAINT fk_report_department
+ALTER TABLE inventory
+    ADD CONSTRAINT fk_inventory_department
     FOREIGN KEY (id_department) REFERENCES department (id);
 
-ALTER TABLE report
-    ADD CONSTRAINT fk_report_storage_file
+ALTER TABLE inventory
+    ADD CONSTRAINT fk_inventory_storage_file
     FOREIGN KEY (id_storage_file) REFERENCES storage_file (id);
 
-ALTER TABLE report
-    ADD CONSTRAINT fk_report_owner_employee
+ALTER TABLE inventory
+    ADD CONSTRAINT fk_inventory_owner_employee
     FOREIGN KEY (id_owner_employee) REFERENCES employee (id);
 
-ALTER TABLE report
-    ADD CONSTRAINT fk_report_validator_employee
+ALTER TABLE inventory
+    ADD CONSTRAINT fk_inventory_validator_employee
     FOREIGN KEY (id_validator_employee) REFERENCES employee (id);
 
--- Auto-relacionamento: impede exclusão de um report usado como base de outro
-ALTER TABLE report
-    ADD CONSTRAINT fk_report_input_report
-    FOREIGN KEY (id_input_report) REFERENCES report (id)
+-- Auto-relacionamento: impede exclusão de um inventory usado como base de outro
+ALTER TABLE inventory
+    ADD CONSTRAINT fk_inventory_input_inventory
+    FOREIGN KEY (id_input_inventory) REFERENCES inventory (id)
     ON DELETE RESTRICT;
 
 ALTER TABLE emission
@@ -332,13 +326,13 @@ ALTER TABLE emission
     ON DELETE RESTRICT;
 
 ALTER TABLE emission
-    ADD CONSTRAINT fk_emission_report
-    FOREIGN KEY (id_report) REFERENCES report (id)
+    ADD CONSTRAINT fk_emission_inventory
+    FOREIGN KEY (id_inventory) REFERENCES inventory (id)
     ON DELETE CASCADE;
 
 ALTER TABLE reduction
-    ADD CONSTRAINT fk_reduction_report
-    FOREIGN KEY (id_report) REFERENCES report (id)
+    ADD CONSTRAINT fk_reduction_inventory
+    FOREIGN KEY (id_inventory) REFERENCES inventory (id)
     ON DELETE CASCADE;
 
 ALTER TABLE reduction
@@ -361,16 +355,16 @@ CREATE INDEX idx_permission_group_permission_id_permission ON permission_group_p
 CREATE INDEX idx_permission_group_permission_id_permission_group ON permission_group_permission (id_permission_group);
 CREATE INDEX idx_parana_seal_forecast_id_unit ON parana_seal_forecast (id_unit);
 CREATE INDEX idx_employee_id_storage_file ON employee (id_storage_file);
-CREATE INDEX idx_report_id_department ON report (id_department);
-CREATE INDEX idx_report_id_storage_file ON report (id_storage_file);
-CREATE INDEX idx_report_id_owner_employee ON report (id_owner_employee);
-CREATE INDEX idx_report_id_validator_employee ON report (id_validator_employee);
-CREATE INDEX idx_report_id_input_report ON report (id_input_report);
+CREATE INDEX idx_inventory_id_department ON inventory (id_department);
+CREATE INDEX idx_inventory_id_storage_file ON inventory (id_storage_file);
+CREATE INDEX idx_inventory_id_owner_employee ON inventory (id_owner_employee);
+CREATE INDEX idx_inventory_id_validator_employee ON inventory (id_validator_employee);
+CREATE INDEX idx_inventory_id_input_inventory ON inventory (id_input_inventory);
 CREATE INDEX idx_emission_id_gas ON emission (id_gas);
 CREATE INDEX idx_emission_id_scope ON emission (id_scope);
 CREATE INDEX idx_emission_id_category ON emission (id_category);
-CREATE INDEX idx_emission_id_report ON emission (id_report);
-CREATE INDEX idx_reduction_id_report ON reduction (id_report);
+CREATE INDEX idx_emission_id_inventory ON emission (id_inventory);
+CREATE INDEX idx_reduction_id_inventory ON reduction (id_inventory);
 CREATE INDEX idx_reduction_id_category ON reduction (id_category);
 
 -- =========================================================
@@ -378,7 +372,7 @@ CREATE INDEX idx_reduction_id_category ON reduction (id_category);
 -- =========================================================
 
 COMMENT ON COLUMN category.classification IS 'Indicates whether the category is upstream, downstream, or another category, according to the GHG Protocol Scope 3 categories. Applicable only when the emission belongs to Scope 3.';
-COMMENT ON COLUMN emission.quantity_co2e IS 'Emission quantity received from the source report, already expressed in metric tons of CO2 equivalent (CO2e). The original gas quantity, when needed, can be derived by dividing this value by the corresponding GWP in gas.gwp.';
+COMMENT ON COLUMN emission.quantity_co2e IS 'Emission quantity received from the source inventory, already expressed in metric tons of CO2 equivalent (CO2e). The original gas quantity, when needed, can be derived by dividing this value by the corresponding GWP in gas.gwp.';
 COMMENT ON COLUMN gas.is_biogenic IS 'Indicates whether the gas emissions are of biogenic origin, according to Part 3 of the GHG template.';
 COMMENT ON COLUMN gas.gwp IS 'Global Warming Potential (GWP) factor of the gas, used to convert its physical quantity into CO2e.';
 
