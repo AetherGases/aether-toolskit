@@ -59,7 +59,7 @@ CREATE TABLE enterprise (
 
 CREATE TABLE plan_subscription (
     id SERIAL,
-    is_active BOOLEAN NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
     installments INTEGER NOT NULL CHECK (installments >= 0),
     created_at TIMESTAMP DEFAULT current_timestamp,
     deactivated_at TIMESTAMP,
@@ -85,7 +85,7 @@ CREATE TABLE unit (
     id SERIAL,
     cnae CHAR(7),
     cnpj CHAR(14) NOT NULL UNIQUE,
-    is_active BOOLEAN NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_enterprise INTEGER,
@@ -137,8 +137,8 @@ CREATE TABLE parana_seal_forecast (
 
 CREATE TABLE administrator (
     id SERIAL,
-    email VARCHAR(150) NOT NULL UNIQUE,
-    password_hash VARCHAR(150) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     CONSTRAINT pk_administrator PRIMARY KEY (id)
