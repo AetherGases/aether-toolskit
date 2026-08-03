@@ -26,11 +26,11 @@ CREATE TYPE CATEGORY_CLASSIFICATION AS ENUM (
 
 CREATE TABLE plan (
     id SERIAL,
-    name VARCHAR(50),
+    name VARCHAR(50) NOT NULL UNIQUE,
     description VARCHAR(150),
-    price NUMERIC,
-    duration_days INTEGER,
-    is_active BOOLEAN,
+    price NUMERIC NOT NULL CHECK (price >= 0),
+    duration_days INTEGER NOT NULL CHECK (duration_days > 0),
+    is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     CONSTRAINT pk_plan PRIMARY KEY (id)
@@ -38,8 +38,8 @@ CREATE TABLE plan (
 
 CREATE TABLE address (
     id SERIAL,
-    zip_code CHAR(8),
-    number INTEGER,
+    zip_code CHAR(8) NOT NULL,
+    number INTEGER NOT NULL,
     complement VARCHAR(150),
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
@@ -48,9 +48,9 @@ CREATE TABLE address (
 
 CREATE TABLE enterprise (
     id SERIAL,
-    name VARCHAR(150),
+    name VARCHAR(150) NOT NULL,
     trade_name VARCHAR(150),
-    cnpj CHAR(14),
+    cnpj CHAR(14) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_address INTEGER,
@@ -59,8 +59,8 @@ CREATE TABLE enterprise (
 
 CREATE TABLE plan_subscription (
     id SERIAL,
-    is_active BOOLEAN,
-    installments INTEGER,
+    is_active BOOLEAN NOT NULL,
+    installments INTEGER NOT NULL CHECK (installments >= 0),
     created_at TIMESTAMP DEFAULT current_timestamp,
     deactivated_at TIMESTAMP,
     id_plan INTEGER,
@@ -70,13 +70,13 @@ CREATE TABLE plan_subscription (
 
 CREATE TABLE payment (
     id SERIAL,
-    value NUMERIC,
+    value NUMERIC NOT NULL CHECK (value > 0),
     term TIMESTAMP,
-    status PAYMENT_STATUS,
+    status PAYMENT_STATUS NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
-    additional_use_value NUMERIC,
-    due_date TIMESTAMP,
+    additional_use_value NUMERIC CHECK (additional_use_value >= 0),
+    due_date TIMESTAMP NOT NULL,
     id_plan_subscription INTEGER,
     CONSTRAINT pk_payment PRIMARY KEY (id)
 );
@@ -84,8 +84,8 @@ CREATE TABLE payment (
 CREATE TABLE unit (
     id SERIAL,
     cnae CHAR(7),
-    cnpj CHAR(14),
-    is_active BOOLEAN,
+    cnpj CHAR(14) NOT NULL UNIQUE,
+    is_active BOOLEAN NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_enterprise INTEGER,
@@ -95,7 +95,7 @@ CREATE TABLE unit (
 
 CREATE TABLE department (
     id SERIAL,
-    name VARCHAR(150),
+    name VARCHAR(150) NOT NULL,
     description VARCHAR(150),
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
@@ -105,13 +105,13 @@ CREATE TABLE department (
 
 CREATE TABLE permission_group (
     id SERIAL,
-    description VARCHAR(150),
+    description VARCHAR(150) NOT NULL,
     CONSTRAINT pk_permission_group PRIMARY KEY (id)
 );
 
 CREATE TABLE permission (
     id SERIAL,
-    name VARCHAR(150),
+    name VARCHAR(150) NOT NULL,
     description VARCHAR(150),
     CONSTRAINT pk_permission PRIMARY KEY (id)
 );
@@ -126,8 +126,8 @@ CREATE TABLE permission_group_permission (
 
 CREATE TABLE parana_seal_forecast (
     id SERIAL,
-    score NUMERIC,
-    level INTEGER,
+    score NUMERIC CHECK (score >= 0),
+    level INTEGER CHECK (level >= 0),
     valid_until TIMESTAMP,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
@@ -137,7 +137,7 @@ CREATE TABLE parana_seal_forecast (
 
 CREATE TABLE administrator (
     id SERIAL,
-    email VARCHAR(150),
+    email VARCHAR(150) NOT NULL UNIQUE,
     password_hash VARCHAR(150) NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
@@ -146,7 +146,7 @@ CREATE TABLE administrator (
 
 CREATE TABLE storage_file (
     id SERIAL,
-    name VARCHAR(150),
+    name VARCHAR(150) NOT NULL,
     path VARCHAR(150) NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
@@ -155,10 +155,10 @@ CREATE TABLE storage_file (
 
 CREATE TABLE employee (
     id SERIAL,
-    name VARCHAR(150),
-    email VARCHAR(150),
-    phone VARCHAR(20),
-    password_hash VARCHAR(150),
+    name VARCHAR(150) NOT NULL,
+    email VARCHAR(150) NOT NULL UNIQUE,
+    phone VARCHAR(20) NOT NULL,
+    password_hash VARCHAR(150) NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_storage_file INTEGER,
@@ -172,7 +172,7 @@ CREATE TABLE employee (
 -- Escopo: Scope 1 / Scope 2 / Scope 3 (Tabela 1 e 7 do template)
 CREATE TABLE scope (
     id SERIAL,
-    name VARCHAR(100),
+    name VARCHAR(100) NOT NULL UNIQUE,
     CONSTRAINT pk_scope PRIMARY KEY (id)
 );
 
@@ -180,7 +180,7 @@ CREATE TABLE scope (
 -- classification só é relevante para linhas de Scope 3; nas demais fica NULL.
 CREATE TABLE category (
     id SERIAL,
-    name VARCHAR(150),
+    name VARCHAR(150) NOT NULL UNIQUE,
     classification CATEGORY_CLASSIFICATION,
     CONSTRAINT pk_category PRIMARY KEY (id)
 );
@@ -188,22 +188,22 @@ CREATE TABLE category (
 -- Gas: gases do inventário (CO2, CH4, N2O, HFCs, PFCs, SF6, entre outros)
 CREATE TABLE gas (
     id SERIAL,
-    name VARCHAR(150),
-    formula VARCHAR(150),
-    is_biogenic BOOLEAN,
-    gwp NUMERIC,
+    name VARCHAR(150) NOT NULL,
+    formula VARCHAR(150) NOT NULL UNIQUE,
+    is_biogenic BOOLEAN NOT NULL,
+    gwp NUMERIC NOT NULL CHECK (gwp > 0),
     CONSTRAINT pk_gas PRIMARY KEY (id)
 );
 
 -- report: informações descritivas do inventário (Parte 1 do template)
 CREATE TABLE report (
     id SERIAL,
-    name VARCHAR(150),
+    name VARCHAR(150) NOT NULL,
     description VARCHAR(150),
-    type REPORT_TYPE,
+    type REPORT_TYPE NOT NULL,
     consolidation_approach VARCHAR(100),
     reporting_period_start DATE,
-    reporting_period_end DATE,
+    reporting_period_end DATE CHECK (reporting_period_end >= reporting_period_start),
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_department INTEGER,
@@ -219,9 +219,9 @@ CREATE TABLE report (
 -- pois pode ser obtida dividindo quantity_co2e pelo gwp do gás em gas.gwp.
 CREATE TABLE emission (
     id SERIAL,
-    quantity_co2e NUMERIC,
+    quantity_co2e NUMERIC NOT NULL CHECK (quantity_co2e >= 0),
     methodology_description VARCHAR(150),
-    supplier_data_percentage NUMERIC,
+    supplier_data_percentage NUMERIC CHECK (supplier_data_percentage BETWEEN 0 AND 100),
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_gas INTEGER,
@@ -234,7 +234,7 @@ CREATE TABLE emission (
 -- reduction: iniciativas de redução de emissões, ligadas ao report e à categoria
 CREATE TABLE reduction (
     id SERIAL,
-    quantity_co2e NUMERIC,
+    quantity_co2e NUMERIC NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_report INTEGER,
