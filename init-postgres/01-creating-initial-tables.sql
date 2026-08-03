@@ -147,7 +147,7 @@ CREATE TABLE administrator (
 CREATE TABLE storage_file (
     id SERIAL,
     name VARCHAR(150) NOT NULL,
-    path VARCHAR(150) NOT NULL,
+    path VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     CONSTRAINT pk_storage_file PRIMARY KEY (id)
