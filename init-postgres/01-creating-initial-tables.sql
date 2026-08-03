@@ -25,13 +25,13 @@ CREATE TYPE CATEGORY_CLASSIFICATION AS ENUM (
 -- =========================================================
 
 CREATE TABLE plan (
-    name VARCHAR(50),
     id SERIAL,
-    description VARCHAR(255),
+    name VARCHAR(50),
+    description VARCHAR(150),
     price NUMERIC,
     duration_days INTEGER,
     is_active BOOLEAN,
-    created_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     CONSTRAINT pk_plan PRIMARY KEY (id)
 );
@@ -40,18 +40,18 @@ CREATE TABLE address (
     id SERIAL,
     zip_code CHAR(8),
     number INTEGER,
-    complement VARCHAR(255),
-    created_at TIMESTAMP,
+    complement VARCHAR(150),
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     CONSTRAINT pk_address PRIMARY KEY (id)
 );
 
 CREATE TABLE enterprise (
     id SERIAL,
-    name VARCHAR(255),
-    trade_name VARCHAR(255),
+    name VARCHAR(150),
+    trade_name VARCHAR(150),
     cnpj CHAR(14),
-    created_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_address INTEGER,
     CONSTRAINT pk_enterprise PRIMARY KEY (id)
@@ -61,7 +61,7 @@ CREATE TABLE plan_subscription (
     id SERIAL,
     is_active BOOLEAN,
     installments INTEGER,
-    created_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     deactivated_at TIMESTAMP,
     id_plan INTEGER,
     id_enterprise INTEGER,
@@ -73,9 +73,10 @@ CREATE TABLE payment (
     value NUMERIC,
     term TIMESTAMP,
     status PAYMENT_STATUS,
-    created_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     additional_use_value NUMERIC,
+    due_date TIMESTAMP,
     id_plan_subscription INTEGER,
     CONSTRAINT pk_payment PRIMARY KEY (id)
 );
@@ -85,7 +86,7 @@ CREATE TABLE unit (
     cnae CHAR(7),
     cnpj CHAR(14),
     is_active BOOLEAN,
-    created_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_enterprise INTEGER,
     id_address INTEGER,
@@ -94,9 +95,9 @@ CREATE TABLE unit (
 
 CREATE TABLE department (
     id SERIAL,
-    name VARCHAR(255),
-    description VARCHAR(255),
-    created_at TIMESTAMP,
+    name VARCHAR(150),
+    description VARCHAR(150),
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_unit INTEGER,
     CONSTRAINT pk_department PRIMARY KEY (id)
@@ -104,14 +105,14 @@ CREATE TABLE department (
 
 CREATE TABLE permission_group (
     id SERIAL,
-    description VARCHAR(255),
+    description VARCHAR(150),
     CONSTRAINT pk_permission_group PRIMARY KEY (id)
 );
 
 CREATE TABLE permission (
     id SERIAL,
-    name VARCHAR(255),
-    description VARCHAR(255),
+    name VARCHAR(150),
+    description VARCHAR(150),
     CONSTRAINT pk_permission PRIMARY KEY (id)
 );
 
@@ -128,7 +129,7 @@ CREATE TABLE parana_seal_forecast (
     score NUMERIC,
     level INTEGER,
     valid_until TIMESTAMP,
-    created_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_unit INTEGER,
     CONSTRAINT pk_parana_seal_forecast PRIMARY KEY (id)
@@ -136,29 +137,29 @@ CREATE TABLE parana_seal_forecast (
 
 CREATE TABLE administrator (
     id SERIAL,
-    email VARCHAR(255),
-    password_hash VARCHAR(255),
-    created_at TIMESTAMP,
+    email VARCHAR(150),
+    password_hash VARCHAR(150) NOT NULL,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     CONSTRAINT pk_administrator PRIMARY KEY (id)
 );
 
 CREATE TABLE storage_file (
     id SERIAL,
-    name VARCHAR(255),
-    path VARCHAR(255),
-    created_at TIMESTAMP,
+    name VARCHAR(150),
+    path VARCHAR(150) NOT NULL,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     CONSTRAINT pk_storage_file PRIMARY KEY (id)
 );
 
 CREATE TABLE employee (
     id SERIAL,
-    name VARCHAR(255),
-    email VARCHAR(255),
+    name VARCHAR(150),
+    email VARCHAR(150),
     phone VARCHAR(20),
-    password_hash VARCHAR(255),
-    created_at TIMESTAMP,
+    password_hash VARCHAR(150),
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_storage_file INTEGER,
     CONSTRAINT pk_employee PRIMARY KEY (id)
@@ -179,7 +180,7 @@ CREATE TABLE scope (
 -- classification só é relevante para linhas de Scope 3; nas demais fica NULL.
 CREATE TABLE category (
     id SERIAL,
-    name VARCHAR(255),
+    name VARCHAR(150),
     classification CATEGORY_CLASSIFICATION,
     CONSTRAINT pk_category PRIMARY KEY (id)
 );
@@ -187,8 +188,8 @@ CREATE TABLE category (
 -- Gas: gases do inventário (CO2, CH4, N2O, HFCs, PFCs, SF6, entre outros)
 CREATE TABLE gas (
     id SERIAL,
-    name VARCHAR(255),
-    formula VARCHAR(255),
+    name VARCHAR(150),
+    formula VARCHAR(150),
     is_biogenic BOOLEAN,
     gwp NUMERIC,
     CONSTRAINT pk_gas PRIMARY KEY (id)
@@ -197,13 +198,13 @@ CREATE TABLE gas (
 -- report: informações descritivas do inventário (Parte 1 do template)
 CREATE TABLE report (
     id SERIAL,
-    name VARCHAR(255),
-    description VARCHAR(255),
+    name VARCHAR(150),
+    description VARCHAR(150),
     type REPORT_TYPE,
     consolidation_approach VARCHAR(100),
     reporting_period_start DATE,
     reporting_period_end DATE,
-    created_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_department INTEGER,
     id_storage_file INTEGER,
@@ -219,9 +220,9 @@ CREATE TABLE report (
 CREATE TABLE emission (
     id SERIAL,
     quantity_co2e NUMERIC,
-    methodology_description VARCHAR(255),
+    methodology_description VARCHAR(150),
     supplier_data_percentage NUMERIC,
-    created_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_gas INTEGER,
     id_scope INTEGER,
@@ -234,7 +235,7 @@ CREATE TABLE emission (
 CREATE TABLE reduction (
     id SERIAL,
     quantity_co2e NUMERIC,
-    created_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_report INTEGER,
     id_category INTEGER,
