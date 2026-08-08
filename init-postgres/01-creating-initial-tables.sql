@@ -176,7 +176,7 @@ CREATE TABLE employee (
 CREATE TABLE permission_group_employee(
     id_employee INTEGER,
     id_permission_group INTEGER,
-    CONSTRAINT pk_permission_group_employee PRIMARY KEY (id_employee, id_permission_group),
+    CONSTRAINT pk_permission_group_employee PRIMARY KEY (id_employee, id_permission_group)
 );
 
 -- =========================================================
