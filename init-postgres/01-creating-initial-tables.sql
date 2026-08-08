@@ -15,6 +15,12 @@ CREATE TYPE CATEGORY_CLASSIFICATION AS ENUM (
     'UPSTREAM'
 );
 
+CREATE TYPE EMPLOYEE_STATUS AS ENUM(
+	'ACTIVE',
+	'INACTIVE',
+	'IN_VACATION'
+);
+
 -- =========================================================
 -- Tabelas administrativas / institucionais
 -- =========================================================
@@ -33,7 +39,11 @@ CREATE TABLE plan (
 
 CREATE TABLE address (
     id SERIAL,
-    zip_code CHAR(8) NOT NULL,
+    zip_code CHAR(8),
+	state VARCHAR(150) NOT NULL,
+	city VARCHAR(150) NOT NULL,
+	neighborhood VARCHAR(150) NOT NULL,
+	street VARCHAR(150) NOT NULL,
     number INTEGER NOT NULL,
     complement VARCHAR(150),
     created_at TIMESTAMP DEFAULT current_timestamp,
@@ -71,7 +81,7 @@ CREATE TABLE payment (
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     additional_use_value NUMERIC CHECK (additional_use_value >= 0),
-    due_date TIMESTAMP NOT NULL,
+    due_date DATE NOT NULL,
     id_plan_subscription INTEGER,
     CONSTRAINT pk_payment PRIMARY KEY (id)
 );
@@ -123,7 +133,7 @@ CREATE TABLE parana_seal_forecast (
     id SERIAL,
     score NUMERIC CHECK (score >= 0),
     level INTEGER CHECK (level >= 0),
-    valid_until TIMESTAMP,
+    valid_until DATE,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_unit INTEGER,
@@ -150,14 +160,23 @@ CREATE TABLE storage_file (
 
 CREATE TABLE employee (
     id SERIAL,
+	cpf CHAR(11) NOT NULL UNIQUE,
     name VARCHAR(150) NOT NULL,
-    email VARCHAR(150) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL UNIQUE,
     phone VARCHAR(20) NOT NULL,
-    password_hash VARCHAR(150) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+	employee_status EMPLOYEE_STATUS NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_storage_file INTEGER,
+    id_department INTEGER,
     CONSTRAINT pk_employee PRIMARY KEY (id)
+);
+
+CREATE TABLE permission_group_employee(
+    id_employee INTEGER,
+    id_permission_group INTEGER,
+    CONSTRAINT pk_permission_group_employee PRIMARY KEY (id_employee, id_permission_group)
 );
 
 -- =========================================================
@@ -288,6 +307,20 @@ ALTER TABLE employee
     ADD CONSTRAINT fk_employee_storage_file
     FOREIGN KEY (id_storage_file) REFERENCES storage_file (id);
 
+ALTER TABLE employee
+    ADD CONSTRAINT fk_employee_department
+    FOREIGN KEY (id_department) REFERENCES department (id);
+
+ALTER TABLE permission_group_employee
+    ADD CONSTRAINT fk_permission_group_employee_employee
+    FOREIGN KEY (id_employee)
+    REFERENCES employee (id);
+
+ALTER TABLE permission_group_employee
+    ADD CONSTRAINT fk_permission_group_employee_permission_group
+    FOREIGN KEY (id_permission_group)
+    REFERENCES permission_group (id);    
+
 ALTER TABLE inventory
     ADD CONSTRAINT fk_inventory_department
     FOREIGN KEY (id_department) REFERENCES department (id);
@@ -303,12 +336,6 @@ ALTER TABLE inventory
 ALTER TABLE inventory
     ADD CONSTRAINT fk_inventory_validator_employee
     FOREIGN KEY (id_validator_employee) REFERENCES employee (id);
-
--- Auto-relacionamento: impede exclusão de um inventory usado como base de outro
-ALTER TABLE inventory
-    ADD CONSTRAINT fk_inventory_input_inventory
-    FOREIGN KEY (id_input_inventory) REFERENCES inventory (id)
-    ON DELETE RESTRICT;
 
 ALTER TABLE emission
     ADD CONSTRAINT fk_emission_gas
@@ -355,11 +382,12 @@ CREATE INDEX idx_permission_group_permission_id_permission ON permission_group_p
 CREATE INDEX idx_permission_group_permission_id_permission_group ON permission_group_permission (id_permission_group);
 CREATE INDEX idx_parana_seal_forecast_id_unit ON parana_seal_forecast (id_unit);
 CREATE INDEX idx_employee_id_storage_file ON employee (id_storage_file);
+CREATE INDEX idx_employee_id_department ON employee (id_department);
+CREATE INDEX idx_employee_status ON employee (employee_status);
 CREATE INDEX idx_inventory_id_department ON inventory (id_department);
 CREATE INDEX idx_inventory_id_storage_file ON inventory (id_storage_file);
 CREATE INDEX idx_inventory_id_owner_employee ON inventory (id_owner_employee);
 CREATE INDEX idx_inventory_id_validator_employee ON inventory (id_validator_employee);
-CREATE INDEX idx_inventory_id_input_inventory ON inventory (id_input_inventory);
 CREATE INDEX idx_emission_id_gas ON emission (id_gas);
 CREATE INDEX idx_emission_id_scope ON emission (id_scope);
 CREATE INDEX idx_emission_id_category ON emission (id_category);
