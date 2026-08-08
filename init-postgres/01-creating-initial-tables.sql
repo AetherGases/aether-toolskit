@@ -81,7 +81,7 @@ CREATE TABLE payment (
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     additional_use_value NUMERIC CHECK (additional_use_value >= 0),
-    due_date TIMESTAMP NOT NULL,
+    due_date DATE NOT NULL,
     id_plan_subscription INTEGER,
     CONSTRAINT pk_payment PRIMARY KEY (id)
 );
@@ -133,7 +133,7 @@ CREATE TABLE parana_seal_forecast (
     id SERIAL,
     score NUMERIC CHECK (score >= 0),
     level INTEGER CHECK (level >= 0),
-    valid_until TIMESTAMP,
+    valid_until DATE,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_unit INTEGER,
