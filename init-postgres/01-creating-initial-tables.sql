@@ -160,16 +160,23 @@ CREATE TABLE storage_file (
 
 CREATE TABLE employee (
     id SERIAL,
-	cpf VARCHAR(11) NOT NULL UNIQUE,
+	cpf CHAR(11) NOT NULL UNIQUE,
     name VARCHAR(150) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
     phone VARCHAR(20) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
+	employee_status EMPLOYEE_STATUS NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_storage_file INTEGER,
-	employee_status EMPLOYEE_STATUS,
+    id_department INTEGER,
     CONSTRAINT pk_employee PRIMARY KEY (id)
+);
+
+CREATE TABLE permission_group_employee(
+    id_employee INTEGER,
+    id_permission_group INTEGER,
+    CONSTRAINT pk_permission_group_employee PRIMARY KEY (id_employee, id_permission_group),
 );
 
 -- =========================================================
@@ -300,6 +307,20 @@ ALTER TABLE employee
     ADD CONSTRAINT fk_employee_storage_file
     FOREIGN KEY (id_storage_file) REFERENCES storage_file (id);
 
+ALTER TABLE employee
+    ADD CONSTRAINT fk_employee_department
+    FOREIGN KEY (id_department) REFERENCES department (id);
+
+ALTER TABLE permission_group_employee
+    ADD CONSTRAINT fk_permission_group_employee_employee
+    FOREIGN KEY (id_employee)
+    REFERENCES employee (id);
+
+ALTER TABLE permission_group_employee
+    ADD CONSTRAINT fk_permission_group_employee_permission_group
+    FOREIGN KEY (id_permission_group)
+    REFERENCES permission_group (id);    
+
 ALTER TABLE inventory
     ADD CONSTRAINT fk_inventory_department
     FOREIGN KEY (id_department) REFERENCES department (id);
@@ -361,6 +382,8 @@ CREATE INDEX idx_permission_group_permission_id_permission ON permission_group_p
 CREATE INDEX idx_permission_group_permission_id_permission_group ON permission_group_permission (id_permission_group);
 CREATE INDEX idx_parana_seal_forecast_id_unit ON parana_seal_forecast (id_unit);
 CREATE INDEX idx_employee_id_storage_file ON employee (id_storage_file);
+CREATE INDEX idx_employee_id_department ON employee (id_department);
+CREATE INDEX idx_employee_status ON employee (employee_status);
 CREATE INDEX idx_inventory_id_department ON inventory (id_department);
 CREATE INDEX idx_inventory_id_storage_file ON inventory (id_storage_file);
 CREATE INDEX idx_inventory_id_owner_employee ON inventory (id_owner_employee);
