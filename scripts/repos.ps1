@@ -10,7 +10,8 @@ $repositories = @(
     "https://github.com/AetherGases/aether-mobile.git",
     "https://github.com/AetherGases/aeko-core-api.git",
     "https://github.com/AetherGases/aeko-sdk.git",
-    "https://github.com/AetherGases/aether-user-experience"
+    "https://github.com/AetherGases/aether-user-experience",
+    "https://github.com/AetherGases/aether-rpa.git"
 )
 
 if (-not (Test-Path $resources)) {
