@@ -113,6 +113,7 @@ CREATE TABLE department (
 CREATE TABLE permission_group (
     id SERIAL,
     description VARCHAR(150) NOT NULL,
+    created_at TIMESTAMP DEFAULT current_timestamp,
     CONSTRAINT pk_permission_group PRIMARY KEY (id)
 );
 
@@ -120,11 +121,16 @@ CREATE TABLE permission (
     id SERIAL,
     name VARCHAR(150) NOT NULL,
     description VARCHAR(150),
+    url VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT current_timestamp,
+    updated_at TIMESTAMP,
     CONSTRAINT pk_permission PRIMARY KEY (id)
 );
 
 CREATE TABLE permission_group_permission (
     id SERIAL,
+    created_at TIMESTAMP DEFAULT current_timestamp,
+    updated_at TIMESTAMP,
     id_permission INTEGER,
     id_permission_group INTEGER,
     CONSTRAINT pk_permission_group_permission PRIMARY KEY (id),
