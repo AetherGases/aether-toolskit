@@ -128,6 +128,7 @@ CREATE TABLE permission_group (
     id SERIAL,
     description VARCHAR(150) NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
+    id_enterprise INTEGER,
     CONSTRAINT pk_permission_group PRIMARY KEY (id)
 );
 
@@ -314,6 +315,10 @@ ALTER TABLE department
     FOREIGN KEY (id_unit) REFERENCES unit (id)
     ON DELETE RESTRICT;
 
+    ALTER TABLE permission_group
+    ADD CONSTRAINT fk_permission_group_enterprise
+    FOREIGN KEY (id_enterprise) REFERENCES enterprise (id);
+
 ALTER TABLE permission_group_permission
     ADD CONSTRAINT fk_permission_group_permission_permission
     FOREIGN KEY (id_permission) REFERENCES permission (id);
@@ -402,6 +407,7 @@ CREATE INDEX idx_payment_id_plan_subscription ON payment (id_plan_subscription);
 CREATE INDEX idx_unit_id_enterprise ON unit (id_enterprise);
 CREATE INDEX idx_unit_id_address ON unit (id_address);
 CREATE INDEX idx_department_id_unit ON department (id_unit);
+CREATE INDEX idx_permission_group_id_enterprise ON permission_group (id_enterprise);
 CREATE INDEX idx_permission_group_permission_id_permission ON permission_group_permission (id_permission);
 CREATE INDEX idx_permission_group_permission_id_permission_group ON permission_group_permission (id_permission_group);
 CREATE INDEX idx_parana_seal_forecast_id_unit ON parana_seal_forecast (id_unit);
