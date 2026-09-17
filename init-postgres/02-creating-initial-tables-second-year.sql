@@ -23,6 +23,20 @@ CREATE TYPE EMPLOYEE_STATUS AS ENUM(
 	'IN_VACATION'
 );
 
+CREATE TYPE INVENTORY_STATUS AS ENUM(
+    'UNDER_REVIEW',
+    'APPROVED',
+    'REJECTED',
+    'PROCESSING',
+    'PROCESSING_FAILED',
+    'REQUESTED',
+    'ISSUED'
+);
+
+CREATE TYPE INVENTORY_TYPE AS ENUM(
+    'INPUT',
+    'OUTPUT'
+);
 -- =========================================================
 -- Tabelas administrativas / institucionais
 -- =========================================================
@@ -121,7 +135,7 @@ CREATE TABLE permission (
     id SERIAL,
     name VARCHAR(150) NOT NULL,
     description VARCHAR(150),
-    url VARCHAR(255) NOT NULL,
+    url VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     CONSTRAINT pk_permission PRIMARY KEY (id)
@@ -225,6 +239,8 @@ CREATE TABLE inventory (
     consolidation_approach VARCHAR(100),
     inventorying_period_start DATE,
     inventorying_period_end DATE CHECK (inventorying_period_end >= inventorying_period_start),
+    status INVENTORY_STATUS NOT NULL,
+    type INVENTORY_TYPE NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_department INTEGER,
