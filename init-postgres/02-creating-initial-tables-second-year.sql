@@ -37,6 +37,19 @@ CREATE TYPE INVENTORY_TYPE AS ENUM(
     'INPUT',
     'OUTPUT'
 );
+
+CREATE TYPE PROBLEM_CATEGORY AS ENUM(
+    'ERROR',
+    'BUG',
+    'LOGIN_AND_ACCOUNT',
+    'INTERFACE_AND_NAVIGATION',
+    'PERFORMANCE',
+    'DATA_AND_INFORMATION',
+    'PAYMENT',
+    'PRIVACY',
+    'OTHERS'
+);
+
 -- =========================================================
 -- Tabelas administrativas / institucionais
 -- =========================================================
@@ -241,6 +254,7 @@ CREATE TABLE inventory (
     inventorying_period_start DATE,
     inventorying_period_end DATE CHECK (inventorying_period_end >= inventorying_period_start),
     status INVENTORY_STATUS NOT NULL,
+    status_message VARCHAR(100),
     type INVENTORY_TYPE NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
@@ -278,6 +292,14 @@ CREATE TABLE reduction (
     id_inventory INTEGER,
     id_category INTEGER,
     CONSTRAINT pk_reduction PRIMARY KEY (id)
+);
+
+CREATE TABLE reported_problem(
+    id SERIAL,
+    category PROBLEM_CATEGORY,
+    description VARCHAR(100),
+    id_storage_file INTEGER,
+    CONSTRAINT pk_reported_problem PRIMARY KEY (id)
 );
 
 -- =========================================================
@@ -396,6 +418,11 @@ ALTER TABLE reduction
     FOREIGN KEY (id_category) REFERENCES category (id)
     ON DELETE RESTRICT;
 
+ALTER TABLE reported_problem
+    ADD CONSTRAINT fk_reported_problem_storage_file
+    FOREIGN KEY (id_storage_file) REFERENCES storage_file (id)
+    ON DELETE RESTRICT;
+
 -- =========================================================
 -- Índices
 -- =========================================================
@@ -424,6 +451,7 @@ CREATE INDEX idx_emission_id_category ON emission (id_category);
 CREATE INDEX idx_emission_id_inventory ON emission (id_inventory);
 CREATE INDEX idx_reduction_id_inventory ON reduction (id_inventory);
 CREATE INDEX idx_reduction_id_category ON reduction (id_category);
+CREATE INDEX idx_reported_problem_id_storage_file ON reported_problem (id_storage_file);
 
 -- =========================================================
 -- Comentários
