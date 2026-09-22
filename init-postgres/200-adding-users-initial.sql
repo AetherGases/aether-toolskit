@@ -2,6 +2,8 @@
 -- Execute após a criação do esquema principal.
 -- Todos os nomes, documentos, endereços e valores são fictícios.
 
+\connect dbAether2Year
+
 BEGIN;
 
 -- address
@@ -89,31 +91,31 @@ INSERT INTO employee (id, cpf, name, email, phone, password_hash, employee_statu
     (12, '90000000012', 'Responsável 12', 'responsavel12@exemplo.com', '41990001012', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 12);
 
 -- inventory
-INSERT INTO inventory (id, name, description, consolidation_approach, inventorying_period_start, inventorying_period_end, id_department, id_owner_employee, id_validator_employee) VALUES
-    (1, 'Inventário Matriz Curitiba 2022', 'Inventário anual de emissões da unidade Matriz Curitiba', 'Participação societária', '2022-01-01', '2022-12-31', 1, 1, 2),
-    (2, 'Inventário Matriz Curitiba 2023', 'Inventário anual de emissões da unidade Matriz Curitiba', 'Controle operacional', '2023-01-01', '2023-12-31', 2, 2, 1),
-    (3, 'Inventário Matriz Curitiba 2024', 'Inventário anual de emissões da unidade Matriz Curitiba', 'Controle operacional', '2024-01-01', '2024-12-31', 1, 1, 2),
-    (4, 'Inventário Matriz Curitiba 2025', 'Inventário anual de emissões da unidade Matriz Curitiba', 'Participação societária', '2025-01-01', '2025-12-31', 2, 2, 1),
-    (5, 'Inventário Planta São José 2022', 'Inventário anual de emissões da unidade Planta São José', 'Participação societária', '2022-01-01', '2022-12-31', 3, 3, 4),
-    (6, 'Inventário Planta São José 2023', 'Inventário anual de emissões da unidade Planta São José', 'Controle operacional', '2023-01-01', '2023-12-31', 4, 4, 3),
-    (7, 'Inventário Planta São José 2024', 'Inventário anual de emissões da unidade Planta São José', 'Participação societária', '2024-01-01', '2024-12-31', 3, 3, 4),
-    (8, 'Inventário Planta São José 2025', 'Inventário anual de emissões da unidade Planta São José', 'Controle operacional', '2025-01-01', '2025-12-31', 4, 4, 3),
-    (9, 'Inventário Centro Londrina 2022', 'Inventário anual de emissões da unidade Centro Londrina', 'Controle operacional', '2022-01-01', '2022-12-31', 5, 5, 6),
-    (10, 'Inventário Centro Londrina 2023', 'Inventário anual de emissões da unidade Centro Londrina', 'Controle operacional', '2023-01-01', '2023-12-31', 6, 6, 5),
-    (11, 'Inventário Centro Londrina 2024', 'Inventário anual de emissões da unidade Centro Londrina', 'Controle operacional', '2024-01-01', '2024-12-31', 5, 5, 6),
-    (12, 'Inventário Centro Londrina 2025', 'Inventário anual de emissões da unidade Centro Londrina', 'Participação societária', '2025-01-01', '2025-12-31', 6, 6, 5),
-    (13, 'Inventário Terminal Maringá 2022', 'Inventário anual de emissões da unidade Terminal Maringá', 'Controle operacional', '2022-01-01', '2022-12-31', 7, 7, 8),
-    (14, 'Inventário Terminal Maringá 2023', 'Inventário anual de emissões da unidade Terminal Maringá', 'Controle operacional', '2023-01-01', '2023-12-31', 8, 8, NULL),
-    (15, 'Inventário Terminal Maringá 2024', 'Inventário anual de emissões da unidade Terminal Maringá', 'Controle operacional', '2024-01-01', '2024-12-31', 7, 7, 8),
-    (16, 'Inventário Terminal Maringá 2025', 'Inventário anual de emissões da unidade Terminal Maringá', 'Participação societária', '2025-01-01', '2025-12-31', 8, 8, NULL),
-    (17, 'Inventário Fábrica Ponta Grossa 2022', 'Inventário anual de emissões da unidade Fábrica Ponta Grossa', 'Controle operacional', '2022-01-01', '2022-12-31', 9, 9, 10),
-    (18, 'Inventário Fábrica Ponta Grossa 2023', 'Inventário anual de emissões da unidade Fábrica Ponta Grossa', 'Controle operacional', '2023-01-01', '2023-12-31', 10, 10, 9),
-    (19, 'Inventário Fábrica Ponta Grossa 2024', 'Inventário anual de emissões da unidade Fábrica Ponta Grossa', 'Participação societária', '2024-01-01', '2024-12-31', 9, 9, 10),
-    (20, 'Inventário Fábrica Ponta Grossa 2025', 'Inventário anual de emissões da unidade Fábrica Ponta Grossa', 'Controle operacional', '2025-01-01', '2025-12-31', 10, 10, 9),
-    (21, 'Inventário Unidade Cascavel 2022', 'Inventário anual de emissões da unidade Unidade Cascavel', 'Participação societária', '2022-01-01', '2022-12-31', 11, 11, 12),
-    (22, 'Inventário Unidade Cascavel 2023', 'Inventário anual de emissões da unidade Unidade Cascavel', 'Controle operacional', '2023-01-01', '2023-12-31', 12, 12, 11),
-    (23, 'Inventário Unidade Cascavel 2024', 'Inventário anual de emissões da unidade Unidade Cascavel', 'Participação societária', '2024-01-01', '2024-12-31', 11, 11, 12),
-    (24, 'Inventário Unidade Cascavel 2025', 'Inventário anual de emissões da unidade Unidade Cascavel', 'Participação societária', '2025-01-01', '2025-12-31', 12, 12, 11);
+INSERT INTO inventory (id, name, description, consolidation_approach, inventorying_period_start, inventorying_period_end, status, type, id_department, id_owner_employee, id_validator_employee) VALUES
+    (1, 'Inventário Matriz Curitiba 2022', 'Inventário anual de emissões da unidade Matriz Curitiba', 'Participação societária', '2022-01-01', '2022-12-31', 'APPROVED', 'INPUT', 1, 1, 2),
+    (2, 'Inventário Matriz Curitiba 2023', 'Inventário anual de emissões da unidade Matriz Curitiba', 'Controle operacional', '2023-01-01', '2023-12-31', 'APPROVED', 'INPUT', 2, 2, 1),
+    (3, 'Inventário Matriz Curitiba 2024', 'Inventário anual de emissões da unidade Matriz Curitiba', 'Controle operacional', '2024-01-01', '2024-12-31', 'APPROVED', 'INPUT', 1, 1, 2),
+    (4, 'Inventário Matriz Curitiba 2025', 'Inventário anual de emissões da unidade Matriz Curitiba', 'Participação societária', '2025-01-01', '2025-12-31', 'APPROVED', 'INPUT', 2, 2, 1),
+    (5, 'Inventário Planta São José 2022', 'Inventário anual de emissões da unidade Planta São José', 'Participação societária', '2022-01-01', '2022-12-31', 'APPROVED', 'INPUT', 3, 3, 4),
+    (6, 'Inventário Planta São José 2023', 'Inventário anual de emissões da unidade Planta São José', 'Controle operacional', '2023-01-01', '2023-12-31', 'APPROVED', 'INPUT', 4, 4, 3),
+    (7, 'Inventário Planta São José 2024', 'Inventário anual de emissões da unidade Planta São José', 'Participação societária', '2024-01-01', '2024-12-31', 'APPROVED', 'INPUT', 3, 3, 4),
+    (8, 'Inventário Planta São José 2025', 'Inventário anual de emissões da unidade Planta São José', 'Controle operacional', '2025-01-01', '2025-12-31', 'APPROVED', 'INPUT', 4, 4, 3),
+    (9, 'Inventário Centro Londrina 2022', 'Inventário anual de emissões da unidade Centro Londrina', 'Controle operacional', '2022-01-01', '2022-12-31', 'APPROVED', 'INPUT', 5, 5, 6),
+    (10, 'Inventário Centro Londrina 2023', 'Inventário anual de emissões da unidade Centro Londrina', 'Controle operacional', '2023-01-01', '2023-12-31', 'APPROVED', 'INPUT', 6, 6, 5),
+    (11, 'Inventário Centro Londrina 2024', 'Inventário anual de emissões da unidade Centro Londrina', 'Controle operacional', '2024-01-01', '2024-12-31', 'APPROVED', 'INPUT', 5, 5, 6),
+    (12, 'Inventário Centro Londrina 2025', 'Inventário anual de emissões da unidade Centro Londrina', 'Participação societária', '2025-01-01', '2025-12-31', 'APPROVED', 'INPUT', 6, 6, 5),
+    (13, 'Inventário Terminal Maringá 2022', 'Inventário anual de emissões da unidade Terminal Maringá', 'Controle operacional', '2022-01-01', '2022-12-31', 'APPROVED', 'INPUT', 7, 7, 8),
+    (14, 'Inventário Terminal Maringá 2023', 'Inventário anual de emissões da unidade Terminal Maringá', 'Controle operacional', '2023-01-01', '2023-12-31', 'APPROVED', 'INPUT', 8, 8, NULL),
+    (15, 'Inventário Terminal Maringá 2024', 'Inventário anual de emissões da unidade Terminal Maringá', 'Controle operacional', '2024-01-01', '2024-12-31', 'APPROVED', 'INPUT', 7, 7, 8),
+    (16, 'Inventário Terminal Maringá 2025', 'Inventário anual de emissões da unidade Terminal Maringá', 'Participação societária', '2025-01-01', '2025-12-31', 'APPROVED', 'INPUT', 8, 8, NULL),
+    (17, 'Inventário Fábrica Ponta Grossa 2022', 'Inventário anual de emissões da unidade Fábrica Ponta Grossa', 'Controle operacional', '2022-01-01', '2022-12-31', 'APPROVED', 'INPUT', 9, 9, 10),
+    (18, 'Inventário Fábrica Ponta Grossa 2023', 'Inventário anual de emissões da unidade Fábrica Ponta Grossa', 'Controle operacional', '2023-01-01', '2023-12-31', 'APPROVED', 'INPUT', 10, 10, 9),
+    (19, 'Inventário Fábrica Ponta Grossa 2024', 'Inventário anual de emissões da unidade Fábrica Ponta Grossa', 'Participação societária', '2024-01-01', '2024-12-31', 'APPROVED', 'INPUT', 9, 9, 10),
+    (20, 'Inventário Fábrica Ponta Grossa 2025', 'Inventário anual de emissões da unidade Fábrica Ponta Grossa', 'Controle operacional', '2025-01-01', '2025-12-31', 'APPROVED', 'INPUT', 10, 10, 9),
+    (21, 'Inventário Unidade Cascavel 2022', 'Inventário anual de emissões da unidade Unidade Cascavel', 'Participação societária', '2022-01-01', '2022-12-31', 'APPROVED', 'INPUT', 11, 11, 12),
+    (22, 'Inventário Unidade Cascavel 2023', 'Inventário anual de emissões da unidade Unidade Cascavel', 'Controle operacional', '2023-01-01', '2023-12-31', 'APPROVED', 'INPUT', 12, 12, 11),
+    (23, 'Inventário Unidade Cascavel 2024', 'Inventário anual de emissões da unidade Unidade Cascavel', 'Participação societária', '2024-01-01', '2024-12-31', 'APPROVED', 'INPUT', 11, 11, 12),
+    (24, 'Inventário Unidade Cascavel 2025', 'Inventário anual de emissões da unidade Unidade Cascavel', 'Participação societária', '2025-01-01', '2025-12-31', 'APPROVED', 'INPUT', 12, 12, 11);
 
 -- emission
 INSERT INTO emission (id, quantity_co2e, methodology_description, supplier_data_percentage, created_at, id_gas, id_scope, id_category, id_inventory) VALUES
@@ -528,6 +530,27 @@ INSERT INTO reduction (id, quantity_co2e, created_at, id_inventory, id_category)
     (47, 1154.676, '2025-12-31', 24, 3),
     (48, 287.846, '2025-12-31', 24, 6);
 
+-- storage_file (evidências anexadas a problemas reportados)
+INSERT INTO storage_file (id, name, path) VALUES
+    (1, 'erro-login-captura.png', '/uploads/reports/2025/01/erro-login-captura.png'),
+    (2, 'dashboard-lento.png', '/uploads/reports/2025/02/dashboard-lento.png'),
+    (3, 'dados-emissao-incorretos.csv', '/uploads/reports/2025/03/dados-emissao-incorretos.csv'),
+    (4, 'menu-navegacao-bug.png', '/uploads/reports/2025/04/menu-navegacao-bug.png'),
+    (5, 'falha-pagamento-recibo.pdf', '/uploads/reports/2025/05/falha-pagamento-recibo.pdf');
+
+-- reported_problem
+INSERT INTO reported_problem (id, category, description, id_storage_file) VALUES
+    (1, 'LOGIN_AND_ACCOUNT', 'Não consigo redefinir a senha após clicar em esqueci minha senha.', 1),
+    (2, 'PERFORMANCE', 'Dashboard de emissões demora mais de 30 segundos para carregar.', 2),
+    (3, 'DATA_AND_INFORMATION', 'Total de CO2e do inventário 2024 não bate com a planilha exportada.', 3),
+    (4, 'INTERFACE_AND_NAVIGATION', 'Menu lateral some ao acessar a tela de reduções em telas menores.', 4),
+    (5, 'PAYMENT', 'Pagamento do plano foi debitado, mas a assinatura continua como pendente.', 5),
+    (6, 'BUG', 'Botão salvar inventário fica desabilitado mesmo com todos os campos preenchidos.', NULL),
+    (7, 'ERROR', 'Erro 500 ao tentar exportar o relatório anual em PDF.', NULL),
+    (8, 'PRIVACY', 'Funcionário consegue visualizar inventário de outro departamento.', NULL),
+    (9, 'OTHERS', 'Sugestão: incluir filtro por unidade na listagem de inventários.', NULL),
+    (10, 'PERFORMANCE', 'Consulta de histórico de emissões trava o navegador com muitos registros.', NULL);
+
 -- parana_seal_forecast
 INSERT INTO parana_seal_forecast (id, score, level, valid_until, created_at, id_unit) VALUES
     (1, 51.5, 1, '2023-06-30', '2022-12-20', 1),
@@ -568,5 +591,7 @@ SELECT setval(pg_get_serial_sequence('inventory', 'id'), COALESCE((SELECT MAX(id
 SELECT setval(pg_get_serial_sequence('emission', 'id'), COALESCE((SELECT MAX(id) FROM emission), 1), TRUE);
 SELECT setval(pg_get_serial_sequence('reduction', 'id'), COALESCE((SELECT MAX(id) FROM reduction), 1), TRUE);
 SELECT setval(pg_get_serial_sequence('parana_seal_forecast', 'id'), COALESCE((SELECT MAX(id) FROM parana_seal_forecast), 1), TRUE);
+SELECT setval(pg_get_serial_sequence('storage_file', 'id'), COALESCE((SELECT MAX(id) FROM storage_file), 1), TRUE);
+SELECT setval(pg_get_serial_sequence('reported_problem', 'id'), COALESCE((SELECT MAX(id) FROM reported_problem), 1), TRUE);
 
 COMMIT;
