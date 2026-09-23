@@ -453,10 +453,6 @@ COMMENT ON COLUMN emission.quantity_co2e IS 'Emission quantity received from the
 COMMENT ON COLUMN gas.is_biogenic IS 'Indicates whether the gas emissions are of biogenic origin, according to Part 3 of the GHG template.';
 COMMENT ON COLUMN gas.gwp IS 'Global Warming Potential (GWP) factor of the gas, used to convert its physical quantity into CO2e.';
 
--- =========================================================
--- Autorização por empresa (DB2Y-07)
--- =========================================================
-
 CREATE OR REPLACE FUNCTION fn_validate_employee_permission_group_enterprise()
 RETURNS trigger
 LANGUAGE plpgsql
