@@ -141,7 +141,7 @@ CREATE TABLE permission_group (
     id SERIAL,
     description VARCHAR(150) NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
-    id_enterprise INTEGER,
+    id_enterprise INTEGER NOT NULL,
     CONSTRAINT pk_permission_group PRIMARY KEY (id)
 );
 
@@ -205,14 +205,9 @@ CREATE TABLE employee (
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
     id_storage_file INTEGER,
-    id_department INTEGER,
+    id_department INTEGER NOT NULL,
+    id_permission_group INTEGER NOT NULL,
     CONSTRAINT pk_employee PRIMARY KEY (id)
-);
-
-CREATE TABLE permission_group_employee(
-    id_employee INTEGER,
-    id_permission_group INTEGER,
-    CONSTRAINT pk_permission_group_employee PRIMARY KEY (id_employee, id_permission_group)
 );
 
 -- =========================================================
@@ -337,7 +332,7 @@ ALTER TABLE department
     FOREIGN KEY (id_unit) REFERENCES unit (id)
     ON DELETE RESTRICT;
 
-    ALTER TABLE permission_group
+ALTER TABLE permission_group
     ADD CONSTRAINT fk_permission_group_enterprise
     FOREIGN KEY (id_enterprise) REFERENCES enterprise (id);
 
@@ -362,15 +357,10 @@ ALTER TABLE employee
     ADD CONSTRAINT fk_employee_department
     FOREIGN KEY (id_department) REFERENCES department (id);
 
-ALTER TABLE permission_group_employee
-    ADD CONSTRAINT fk_permission_group_employee_employee
-    FOREIGN KEY (id_employee)
-    REFERENCES employee (id);
-
-ALTER TABLE permission_group_employee
-    ADD CONSTRAINT fk_permission_group_employee_permission_group
-    FOREIGN KEY (id_permission_group)
-    REFERENCES permission_group (id);    
+ALTER TABLE employee
+    ADD CONSTRAINT fk_employee_permission_group
+    FOREIGN KEY (id_permission_group) REFERENCES permission_group (id)
+    ON DELETE RESTRICT;
 
 ALTER TABLE inventory
     ADD CONSTRAINT fk_inventory_department
@@ -440,6 +430,7 @@ CREATE INDEX idx_permission_group_permission_id_permission_group ON permission_g
 CREATE INDEX idx_parana_seal_forecast_id_unit ON parana_seal_forecast (id_unit);
 CREATE INDEX idx_employee_id_storage_file ON employee (id_storage_file);
 CREATE INDEX idx_employee_id_department ON employee (id_department);
+CREATE INDEX idx_employee_id_permission_group ON employee (id_permission_group);
 CREATE INDEX idx_employee_status ON employee (employee_status);
 CREATE INDEX idx_inventory_id_department ON inventory (id_department);
 CREATE INDEX idx_inventory_id_storage_file ON inventory (id_storage_file);
@@ -461,5 +452,83 @@ COMMENT ON COLUMN category.classification IS 'Indicates whether the category is 
 COMMENT ON COLUMN emission.quantity_co2e IS 'Emission quantity received from the source inventory, already expressed in metric tons of CO2 equivalent (CO2e). The original gas quantity, when needed, can be derived by dividing this value by the corresponding GWP in gas.gwp.';
 COMMENT ON COLUMN gas.is_biogenic IS 'Indicates whether the gas emissions are of biogenic origin, according to Part 3 of the GHG template.';
 COMMENT ON COLUMN gas.gwp IS 'Global Warming Potential (GWP) factor of the gas, used to convert its physical quantity into CO2e.';
+
+CREATE OR REPLACE FUNCTION fn_validate_employee_permission_group_enterprise()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_employee_enterprise_id integer;
+    v_group_enterprise_id integer;
+BEGIN
+    SELECT u.id_enterprise
+    INTO v_employee_enterprise_id
+    FROM department d
+    JOIN unit u ON u.id = d.id_unit
+    WHERE d.id = NEW.id_department;
+
+    IF v_employee_enterprise_id IS NULL THEN
+        RAISE EXCEPTION 'employee department must resolve to an enterprise'
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT pg.id_enterprise
+    INTO v_group_enterprise_id
+    FROM permission_group pg
+    WHERE pg.id = NEW.id_permission_group;
+
+    IF v_group_enterprise_id IS NULL THEN
+        RAISE EXCEPTION 'permission group must belong to an enterprise'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF v_employee_enterprise_id <> v_group_enterprise_id THEN
+        RAISE EXCEPTION 'permission group must belong to the same enterprise as the employee department'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION fn_validate_permission_group_enterprise_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF NEW.id_enterprise IS DISTINCT FROM OLD.id_enterprise
+       AND EXISTS (
+           SELECT 1
+           FROM employee e
+           JOIN department d ON d.id = e.id_department
+           JOIN unit u ON u.id = d.id_unit
+           WHERE e.id_permission_group = NEW.id
+             AND u.id_enterprise IS DISTINCT FROM NEW.id_enterprise
+       ) THEN
+        RAISE EXCEPTION 'cannot change permission group enterprise while employees reference it from another enterprise'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_validate_employee_permission_group_enterprise
+    BEFORE INSERT OR UPDATE OF id_department, id_permission_group ON employee
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_validate_employee_permission_group_enterprise();
+
+CREATE TRIGGER trg_validate_permission_group_enterprise_change
+    BEFORE UPDATE OF id_enterprise ON permission_group
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_validate_permission_group_enterprise_change();
+
+COMMENT ON FUNCTION fn_validate_employee_permission_group_enterprise() IS
+    'Ensures the employee permission group belongs to the same enterprise as the employee department. AUTH-FR-006, AUTH-FR-007.';
+
+COMMENT ON FUNCTION fn_validate_permission_group_enterprise_change() IS
+    'Prevents changing a permission group enterprise when employees from another enterprise still reference it. AUTH-FR-007.';
 
 COMMIT;
