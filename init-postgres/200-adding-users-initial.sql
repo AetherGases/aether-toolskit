@@ -75,20 +75,42 @@ INSERT INTO gas (id, name, formula, is_biogenic, gwp) VALUES
     (5, 'Hidrofluorcarbonetos', 'HFCs', FALSE, 1430),
     (6, 'Hexafluoreto de enxofre', 'SF6', FALSE, 23500);
 
+-- permission
+INSERT INTO permission (id, name, description, url) VALUES
+    (1, 'Visualizar inventários', 'Consulta de inventários de emissões', '/inventory/view'),
+    (2, 'Editar inventários', 'Edição de inventários de emissões', '/inventory/edit'),
+    (3, 'Gerenciar funcionários', 'Administração de funcionários da empresa', '/employees/manage');
+
+-- permission_group (one default group per enterprise)
+INSERT INTO permission_group (id, description, id_enterprise) VALUES
+    (1, 'Grupo padrão Aurora', 1),
+    (2, 'Grupo padrão Horizonte', 2),
+    (3, 'Grupo padrão Vale Circular', 3);
+
+-- permission_group_permission
+INSERT INTO permission_group_permission (id, id_permission, id_permission_group) VALUES
+    (1, 1, 1),
+    (2, 2, 1),
+    (3, 3, 1),
+    (4, 1, 2),
+    (5, 2, 2),
+    (6, 1, 3),
+    (7, 2, 3);
+
 -- employee
-INSERT INTO employee (id, cpf, name, email, phone, password_hash, employee_status, id_department) VALUES
-    (1, '90000000001', 'Responsável 01', 'responsavel01@exemplo.com', '41990001001', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 1),
-    (2, '90000000002', 'Responsável 02', 'responsavel02@exemplo.com', '41990001002', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 2),
-    (3, '90000000003', 'Responsável 03', 'responsavel03@exemplo.com', '41990001003', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 3),
-    (4, '90000000004', 'Responsável 04', 'responsavel04@exemplo.com', '41990001004', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 4),
-    (5, '90000000005', 'Responsável 05', 'responsavel05@exemplo.com', '41990001005', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 5),
-    (6, '90000000006', 'Responsável 06', 'responsavel06@exemplo.com', '41990001006', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 6),
-    (7, '90000000007', 'Responsável 07', 'responsavel07@exemplo.com', '41990001007', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 7),
-    (8, '90000000008', 'Responsável 08', 'responsavel08@exemplo.com', '41990001008', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 8),
-    (9, '90000000009', 'Responsável 09', 'responsavel09@exemplo.com', '41990001009', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 9),
-    (10, '90000000010', 'Responsável 10', 'responsavel10@exemplo.com', '41990001010', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 10),
-    (11, '90000000011', 'Responsável 11', 'responsavel11@exemplo.com', '41990001011', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 11),
-    (12, '90000000012', 'Responsável 12', 'responsavel12@exemplo.com', '41990001012', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 12);
+INSERT INTO employee (id, cpf, name, email, phone, password_hash, employee_status, id_department, id_permission_group) VALUES
+    (1, '90000000001', 'Responsável 01', 'responsavel01@exemplo.com', '41990001001', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 1, 1),
+    (2, '90000000002', 'Responsável 02', 'responsavel02@exemplo.com', '41990001002', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 2, 1),
+    (3, '90000000003', 'Responsável 03', 'responsavel03@exemplo.com', '41990001003', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 3, 1),
+    (4, '90000000004', 'Responsável 04', 'responsavel04@exemplo.com', '41990001004', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 4, 1),
+    (5, '90000000005', 'Responsável 05', 'responsavel05@exemplo.com', '41990001005', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 5, 2),
+    (6, '90000000006', 'Responsável 06', 'responsavel06@exemplo.com', '41990001006', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 6, 2),
+    (7, '90000000007', 'Responsável 07', 'responsavel07@exemplo.com', '41990001007', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 7, 2),
+    (8, '90000000008', 'Responsável 08', 'responsavel08@exemplo.com', '41990001008', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 8, 2),
+    (9, '90000000009', 'Responsável 09', 'responsavel09@exemplo.com', '41990001009', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 9, 3),
+    (10, '90000000010', 'Responsável 10', 'responsavel10@exemplo.com', '41990001010', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 10, 3),
+    (11, '90000000011', 'Responsável 11', 'responsavel11@exemplo.com', '41990001011', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 11, 3),
+    (12, '90000000012', 'Responsável 12', 'responsavel12@exemplo.com', '41990001012', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 12, 3);
 
 -- inventory
 INSERT INTO inventory (id, name, description, consolidation_approach, inventorying_period_start, inventorying_period_end, status, type, id_department, id_owner_employee, id_validator_employee) VALUES
@@ -583,6 +605,9 @@ SELECT setval(pg_get_serial_sequence('address', 'id'), COALESCE((SELECT MAX(id) 
 SELECT setval(pg_get_serial_sequence('enterprise', 'id'), COALESCE((SELECT MAX(id) FROM enterprise), 1), TRUE);
 SELECT setval(pg_get_serial_sequence('unit', 'id'), COALESCE((SELECT MAX(id) FROM unit), 1), TRUE);
 SELECT setval(pg_get_serial_sequence('department', 'id'), COALESCE((SELECT MAX(id) FROM department), 1), TRUE);
+SELECT setval(pg_get_serial_sequence('permission', 'id'), COALESCE((SELECT MAX(id) FROM permission), 1), TRUE);
+SELECT setval(pg_get_serial_sequence('permission_group', 'id'), COALESCE((SELECT MAX(id) FROM permission_group), 1), TRUE);
+SELECT setval(pg_get_serial_sequence('permission_group_permission', 'id'), COALESCE((SELECT MAX(id) FROM permission_group_permission), 1), TRUE);
 SELECT setval(pg_get_serial_sequence('employee', 'id'), COALESCE((SELECT MAX(id) FROM employee), 1), TRUE);
 SELECT setval(pg_get_serial_sequence('scope', 'id'), COALESCE((SELECT MAX(id) FROM scope), 1), TRUE);
 SELECT setval(pg_get_serial_sequence('category', 'id'), COALESCE((SELECT MAX(id) FROM category), 1), TRUE);
