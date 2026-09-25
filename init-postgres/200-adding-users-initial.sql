@@ -81,11 +81,12 @@ INSERT INTO permission (id, name, description, url) VALUES
     (2, 'Editar inventários', 'Edição de inventários de emissões', '/inventory/edit'),
     (3, 'Gerenciar funcionários', 'Administração de funcionários da empresa', '/employees/manage');
 
--- permission_group (one default group per enterprise)
+-- permission_group (one default group per enterprise + one global QA group)
 INSERT INTO permission_group (id, description, id_enterprise) VALUES
     (1, 'Grupo padrão Aurora', 1),
     (2, 'Grupo padrão Horizonte', 2),
-    (3, 'Grupo padrão Vale Circular', 3);
+    (3, 'Grupo padrão Vale Circular', 3),
+    (4, 'Grupo global QA', NULL);
 
 -- permission_group_permission
 INSERT INTO permission_group_permission (id, id_permission, id_permission_group) VALUES
@@ -95,7 +96,10 @@ INSERT INTO permission_group_permission (id, id_permission, id_permission_group)
     (4, 1, 2),
     (5, 2, 2),
     (6, 1, 3),
-    (7, 2, 3);
+    (7, 2, 3),
+    (8, 1, 4),
+    (9, 2, 4),
+    (10, 3, 4);
 
 -- employee
 INSERT INTO employee (id, cpf, name, email, phone, password_hash, employee_status, id_department, id_permission_group) VALUES
@@ -111,6 +115,14 @@ INSERT INTO employee (id, cpf, name, email, phone, password_hash, employee_statu
     (10, '90000000010', 'Responsável 10', 'responsavel10@exemplo.com', '41990001010', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 10, 3),
     (11, '90000000011', 'Responsável 11', 'responsavel11@exemplo.com', '41990001011', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 11, 3),
     (12, '90000000012', 'Responsável 12', 'responsavel12@exemplo.com', '41990001012', '$2b$12$mock.hash.for.academic.use.only', 'ACTIVE', 12, 3);
+
+-- QA employees (real emails for test mass; shared Argon2id password hash)
+INSERT INTO employee (id, cpf, name, email, phone, password_hash, employee_status, id_department, id_permission_group) VALUES
+    (13, '90000000013', 'Caio Marcos', 'caiomarcos231@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 1, 4),
+    (14, '90000000014', 'Vinicius Boas', 'vinicius.vboas1@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 5, 4),
+    (15, '90000000015', 'Isabelly', 'isabelly1799@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 9, 4),
+    (16, '90000000016', 'Fernanda Nagata', 'fernanda.nogueira.nagata@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 2, 4),
+    (17, '90000000017', 'Casarini Pandavas', 'casarini.pandavas@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 6, 4);
 
 -- inventory
 INSERT INTO inventory (id, name, description, consolidation_approach, inventorying_period_start, inventorying_period_end, status, type, id_department, id_owner_employee, id_validator_employee) VALUES
