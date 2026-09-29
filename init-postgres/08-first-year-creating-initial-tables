@@ -1,5 +1,5 @@
 --CREATE TYPE
-CREATE TYPE status_employee AS ENUM('active', 'on leave', 'on vacation', 'dismissed');
+CREATE TYPE status_employee AS ENUM('ACTIVE', 'INACTIVE', 'IN_VACATION');
 
 CREATE TYPE status_inventory AS ENUM('pending', 'in review', 'approved');
 
