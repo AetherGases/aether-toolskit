@@ -75,9 +75,13 @@ INSERT INTO gas (id, name, formula, is_biogenic, gwp) VALUES
     (5, 'Hidrofluorcarbonetos', 'HFCs', FALSE, 1430),
     (6, 'Hexafluoreto de enxofre', 'SF6', FALSE, 23500);
 
--- permission
+-- permission (catalog restricted to analytics visibility + backend enum patterns)
 INSERT INTO permission (id, name, description, pattern) VALUES
-    (1, 'user:analytics:visibility:high', 'High analytics visibility across the enterprise hierarchy', 'user:analytics:visibility:high');
+    (1, 'user:analytics:visibility:high', 'High analytics visibility across the enterprise hierarchy', 'user:analytics:visibility:high'),
+    (2, 'inventory:analysis', 'Inventory analysis access', 'inventory:analysis'),
+    (3, 'inventory:edit', 'Inventory create and edit access', 'inventory:edit'),
+    (4, 'calculator', 'Calculator access', 'calculator'),
+    (5, 'chatbot', 'Chatbot access', 'chatbot');
 
 -- permission_group (one default group per enterprise + one global QA group)
 INSERT INTO permission_group (id, description, id_enterprise) VALUES
@@ -86,9 +90,26 @@ INSERT INTO permission_group (id, description, id_enterprise) VALUES
     (3, 'Grupo padrão Vale Circular', 3),
     (4, 'Grupo global QA', NULL);
 
--- permission_group_permission (analytics visibility only on Aurora default group)
+-- permission_group_permission
+-- analytics visibility only on Aurora default group; remaining catalog on every group
 INSERT INTO permission_group_permission (id, id_permission, id_permission_group) VALUES
-    (1, 1, 1);
+    (1, 1, 1),
+    (2, 2, 1),
+    (3, 3, 1),
+    (4, 4, 1),
+    (5, 5, 1),
+    (6, 2, 2),
+    (7, 3, 2),
+    (8, 4, 2),
+    (9, 5, 2),
+    (10, 2, 3),
+    (11, 3, 3),
+    (12, 4, 3),
+    (13, 5, 3),
+    (14, 2, 4),
+    (15, 3, 4),
+    (16, 4, 4),
+    (17, 5, 4);
 
 -- employee
 INSERT INTO employee (id, cpf, name, email, phone, password_hash, employee_status, id_department, id_permission_group) VALUES
