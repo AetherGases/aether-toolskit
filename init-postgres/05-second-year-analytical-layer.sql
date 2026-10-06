@@ -351,6 +351,865 @@ COMMENT ON COLUMN vw_analytics_org_period.cumulative_net IS 'Cumulative net bala
 COMMENT ON COLUMN vw_analytics_org_period.rank_emitted_in_enterprise_period IS 'Emission ranking within the enterprise in the period.';
 COMMENT ON COLUMN vw_analytics_org_period.rank_net_in_enterprise_period IS 'Net-balance ranking within the enterprise in the period.';
 
+-- Resolves the organizational visibility shared by all dashboard functions.
+CREATE OR REPLACE FUNCTION fn_dash_visible_units(
+    p_employee_id integer,
+    p_plant_id integer,
+    p_visibility_permission_pattern text
+)
+RETURNS TABLE (
+    unit_id integer,
+    enterprise_id integer,
+    has_high_visibility boolean
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_unit_id integer;
+    v_enterprise_id integer;
+    v_permission_group_id integer;
+    v_has_high_visibility boolean;
+BEGIN
+    IF p_employee_id IS NULL THEN
+        RAISE EXCEPTION 'employee_id is required'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF p_visibility_permission_pattern IS NULL
+       OR btrim(p_visibility_permission_pattern) = '' THEN
+        RAISE EXCEPTION 'visibility_permission_pattern is required'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT
+        u.id,
+        u.id_enterprise,
+        e.id_permission_group
+    INTO
+        v_unit_id,
+        v_enterprise_id,
+        v_permission_group_id
+    FROM employee e
+    LEFT JOIN department d ON d.id = e.id_department
+    LEFT JOIN unit u ON u.id = d.id_unit
+    WHERE e.id = p_employee_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Employee % not found', p_employee_id
+            USING ERRCODE = '23503';
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1
+        FROM permission_group_permission pgp
+        JOIN permission p ON p.id = pgp.id_permission
+        WHERE pgp.id_permission_group = v_permission_group_id
+          AND p_visibility_permission_pattern ~ p.pattern
+    )
+    INTO v_has_high_visibility;
+
+    RETURN QUERY
+    SELECT
+        u.id,
+        u.id_enterprise,
+        v_has_high_visibility
+    FROM unit u
+    WHERE u.id_enterprise = v_enterprise_id
+      AND (v_has_high_visibility OR u.id = v_unit_id)
+      AND (p_plant_id IS NULL OR u.id = p_plant_id)
+    ORDER BY u.id;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_visible_units(integer, integer, text) IS
+    'Returns the optionally selected plant when visible to an employee, using the permission probe supplied by the caller. Raises 22023 for invalid parameters and 23503 when the employee is absent. DASH-FR-001, DASH-FR-002, DASH-FR-003, DASH-FR-004, DASH-FR-016.';
+
+-- Returns generated savings for the reference year and its YoY variation.
+CREATE OR REPLACE FUNCTION fn_dash_generated_savings(
+    p_employee_id integer,
+    p_reference_year integer,
+    p_months integer[],
+    p_plant_id integer,
+    p_visibility_permission_pattern text,
+    p_previous_year_offset integer,
+    p_percentage_scale numeric
+)
+RETURNS TABLE (
+    total_tco2e numeric,
+    previous_tco2e numeric,
+    variation_pct numeric
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_reference_year IS NULL
+       OR p_previous_year_offset IS NULL OR p_previous_year_offset <= 0
+       OR p_percentage_scale IS NULL OR p_percentage_scale <= 0
+       OR EXISTS (
+           SELECT 1 FROM unnest(p_months) AS selected_month
+           WHERE selected_month IS NULL OR selected_month NOT BETWEEN 1 AND 12
+       ) THEN
+        RAISE EXCEPTION 'invalid dashboard parameters'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH visible AS MATERIALIZED (
+        SELECT vu.unit_id
+        FROM fn_dash_visible_units(
+            p_employee_id,
+            p_plant_id,
+            p_visibility_permission_pattern
+        ) vu
+    ),
+    totals AS (
+        SELECT
+            SUM(fr.quantity_co2e) FILTER (
+                WHERE EXTRACT(YEAR FROM fr.period_start)::integer = p_reference_year
+            ) AS current_total,
+            SUM(fr.quantity_co2e) FILTER (
+                WHERE EXTRACT(YEAR FROM fr.period_start)::integer = p_reference_year - p_previous_year_offset
+            ) AS previous_total
+        FROM vw_fact_reduction fr
+        JOIN visible vu ON vu.unit_id = fr.unit_id
+        WHERE fr.unit_id IS NOT NULL
+          AND EXTRACT(YEAR FROM fr.period_start)::integer IN (
+              p_reference_year,
+              p_reference_year - p_previous_year_offset
+          )
+          AND (
+              p_months IS NULL
+              OR cardinality(p_months) = 0
+              OR EXTRACT(MONTH FROM fr.period_start)::integer = ANY(p_months)
+          )
+    )
+    SELECT
+        COALESCE(t.current_total, 0),
+        t.previous_total,
+        CASE
+            WHEN t.previous_total IS NULL OR t.previous_total = 0 THEN NULL
+            ELSE (COALESCE(t.current_total, 0) - t.previous_total)
+                / t.previous_total * p_percentage_scale
+        END
+    FROM totals t;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_generated_savings(integer, integer, integer[], integer, text, integer, numeric) IS
+    'Returns filtered reduction savings in tCO2e for the reference and caller-defined comparison years, with caller-defined percentage scale. DASH-FR-001, DASH-FR-004, DASH-FR-005, DASH-FR-014, DASH-NFR-002, DASH-NFR-004.';
+
+-- Counts inventory insertions in the reference and previous years.
+CREATE OR REPLACE FUNCTION fn_dash_analyses(
+    p_employee_id integer,
+    p_reference_year integer,
+    p_months integer[],
+    p_plant_id integer,
+    p_visibility_permission_pattern text,
+    p_previous_year_offset integer,
+    p_percentage_scale numeric
+)
+RETURNS TABLE (
+    analyses_count integer,
+    previous_count integer,
+    variation_pct numeric
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_reference_year IS NULL
+       OR p_previous_year_offset IS NULL OR p_previous_year_offset <= 0
+       OR p_percentage_scale IS NULL OR p_percentage_scale <= 0
+       OR EXISTS (
+           SELECT 1 FROM unnest(p_months) AS selected_month
+           WHERE selected_month IS NULL OR selected_month NOT BETWEEN 1 AND 12
+       ) THEN
+        RAISE EXCEPTION 'invalid dashboard parameters'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH visible AS MATERIALIZED (
+        SELECT vu.unit_id
+        FROM fn_dash_visible_units(
+            p_employee_id,
+            p_plant_id,
+            p_visibility_permission_pattern
+        ) vu
+    ),
+    counts AS (
+        SELECT
+            COUNT(*) FILTER (
+                WHERE EXTRACT(YEAR FROM i.created_at)::integer = p_reference_year
+            )::integer AS current_count,
+            COUNT(*) FILTER (
+                WHERE EXTRACT(YEAR FROM i.created_at)::integer = p_reference_year - p_previous_year_offset
+            )::integer AS prior_count
+        FROM inventory i
+        JOIN department d ON d.id = i.id_department
+        JOIN visible vu ON vu.unit_id = d.id_unit
+        WHERE d.id_unit IS NOT NULL
+          AND EXTRACT(YEAR FROM i.created_at)::integer IN (
+              p_reference_year,
+              p_reference_year - p_previous_year_offset
+          )
+          AND (
+              p_months IS NULL
+              OR cardinality(p_months) = 0
+              OR EXTRACT(MONTH FROM i.created_at)::integer = ANY(p_months)
+          )
+    )
+    SELECT
+        c.current_count,
+        c.prior_count,
+        CASE
+            WHEN c.prior_count = 0 THEN NULL
+            ELSE (c.current_count - c.prior_count)::numeric
+                / c.prior_count * p_percentage_scale
+        END
+    FROM counts c;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_analyses(integer, integer, integer[], integer, text, integer, numeric) IS
+    'Counts filtered inventory insertions for caller-defined reference and comparison years and percentage scale. DASH-FR-001, DASH-FR-004, DASH-FR-006, DASH-FR-014, DASH-NFR-002.';
+
+-- Counts active plants with at least one inventory insertion in each year.
+CREATE OR REPLACE FUNCTION fn_dash_active_plants(
+    p_employee_id integer,
+    p_reference_year integer,
+    p_months integer[],
+    p_plant_id integer,
+    p_visibility_permission_pattern text,
+    p_previous_year_offset integer,
+    p_percentage_scale numeric,
+    p_required_active_status boolean
+)
+RETURNS TABLE (
+    active_count integer,
+    previous_count integer,
+    variation_pct numeric
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_reference_year IS NULL
+       OR p_previous_year_offset IS NULL OR p_previous_year_offset <= 0
+       OR p_percentage_scale IS NULL OR p_percentage_scale <= 0
+       OR p_required_active_status IS NULL
+       OR EXISTS (
+           SELECT 1 FROM unnest(p_months) AS selected_month
+           WHERE selected_month IS NULL OR selected_month NOT BETWEEN 1 AND 12
+       ) THEN
+        RAISE EXCEPTION 'invalid dashboard parameters'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH visible AS MATERIALIZED (
+        SELECT vu.unit_id
+        FROM fn_dash_visible_units(
+            p_employee_id,
+            p_plant_id,
+            p_visibility_permission_pattern
+        ) vu
+    ),
+    counts AS (
+        SELECT
+            COUNT(*) FILTER (
+                WHERE u.is_active IS NOT DISTINCT FROM p_required_active_status
+                  AND EXTRACT(YEAR FROM u.created_at)::integer <= p_reference_year
+                  AND EXISTS (
+                      SELECT 1
+                      FROM inventory i
+                      JOIN department d ON d.id = i.id_department
+                      WHERE d.id_unit = u.id
+                        AND EXTRACT(YEAR FROM i.created_at)::integer = p_reference_year
+                        AND (
+                            p_months IS NULL
+                            OR cardinality(p_months) = 0
+                            OR EXTRACT(MONTH FROM i.created_at)::integer = ANY(p_months)
+                        )
+                  )
+            )::integer AS current_count,
+            COUNT(*) FILTER (
+                WHERE u.is_active IS NOT DISTINCT FROM p_required_active_status
+                  AND EXTRACT(YEAR FROM u.created_at)::integer
+                      <= p_reference_year - p_previous_year_offset
+                  AND EXISTS (
+                      SELECT 1
+                      FROM inventory i
+                      JOIN department d ON d.id = i.id_department
+                      WHERE d.id_unit = u.id
+                        AND EXTRACT(YEAR FROM i.created_at)::integer
+                            = p_reference_year - p_previous_year_offset
+                        AND (
+                            p_months IS NULL
+                            OR cardinality(p_months) = 0
+                            OR EXTRACT(MONTH FROM i.created_at)::integer = ANY(p_months)
+                        )
+                  )
+            )::integer AS prior_count
+        FROM unit u
+        JOIN visible vu ON vu.unit_id = u.id
+    )
+    SELECT
+        c.current_count,
+        c.prior_count,
+        CASE
+            WHEN c.prior_count = 0 THEN NULL
+            ELSE (c.current_count - c.prior_count)::numeric
+                / c.prior_count * p_percentage_scale
+        END
+    FROM counts c;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_active_plants(integer, integer, integer[], integer, text, integer, numeric, boolean) IS
+    'Counts filtered visible units matching the caller-defined active status in the reference and comparison years. DASH-FR-001, DASH-FR-004, DASH-FR-007, DASH-FR-014, DASH-NFR-002.';
+
+-- Returns the mean interval between consecutive inventory insertions.
+CREATE OR REPLACE FUNCTION fn_dash_average_insertion_interval(
+    p_employee_id integer,
+    p_reference_year integer,
+    p_months integer[],
+    p_plant_id integer,
+    p_visibility_permission_pattern text,
+    p_seconds_per_day numeric
+)
+RETURNS TABLE (
+    average_interval_days numeric,
+    sample_size integer
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_reference_year IS NULL
+       OR p_seconds_per_day IS NULL OR p_seconds_per_day <= 0
+       OR EXISTS (
+           SELECT 1 FROM unnest(p_months) AS selected_month
+           WHERE selected_month IS NULL OR selected_month NOT BETWEEN 1 AND 12
+       ) THEN
+        RAISE EXCEPTION 'invalid dashboard parameters'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH visible AS MATERIALIZED (
+        SELECT vu.unit_id
+        FROM fn_dash_visible_units(
+            p_employee_id,
+            p_plant_id,
+            p_visibility_permission_pattern
+        ) vu
+    ),
+    ordered_insertions AS (
+        SELECT
+            i.created_at,
+            LAG(i.created_at) OVER (ORDER BY i.created_at, i.id) AS previous_created_at
+        FROM inventory i
+        JOIN department d ON d.id = i.id_department
+        JOIN visible vu ON vu.unit_id = d.id_unit
+        WHERE d.id_unit IS NOT NULL
+          AND EXTRACT(YEAR FROM i.created_at)::integer = p_reference_year
+          AND (
+              p_months IS NULL
+              OR cardinality(p_months) = 0
+              OR EXTRACT(MONTH FROM i.created_at)::integer = ANY(p_months)
+          )
+    )
+    SELECT
+        AVG(EXTRACT(EPOCH FROM (oi.created_at - oi.previous_created_at)) / p_seconds_per_day)
+            FILTER (WHERE oi.previous_created_at IS NOT NULL),
+        COUNT(*)::integer
+    FROM ordered_insertions oi;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_average_insertion_interval(integer, integer, integer[], integer, text, numeric) IS
+    'Returns the filtered average consecutive inventory insertion interval using the caller-defined seconds-per-day conversion. DASH-FR-001, DASH-FR-004, DASH-FR-009, DASH-FR-014.';
+
+-- Returns savings and net reduction percentage for every visible plant.
+CREATE OR REPLACE FUNCTION fn_dash_plants_table(
+    p_employee_id integer,
+    p_reference_year integer,
+    p_months integer[],
+    p_plant_id integer,
+    p_visibility_permission_pattern text,
+    p_percentage_scale numeric,
+    p_minimum_reduction_pct numeric
+)
+RETURNS TABLE (
+    plant_id integer,
+    plant_name text,
+    economia_tco2e numeric,
+    reducao_pct numeric
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_reference_year IS NULL
+       OR p_percentage_scale IS NULL OR p_percentage_scale <= 0
+       OR p_minimum_reduction_pct IS NULL
+       OR EXISTS (
+           SELECT 1 FROM unnest(p_months) AS selected_month
+           WHERE selected_month IS NULL OR selected_month NOT BETWEEN 1 AND 12
+       ) THEN
+        RAISE EXCEPTION 'invalid dashboard parameters'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH visible AS MATERIALIZED (
+        SELECT vu.unit_id
+        FROM fn_dash_visible_units(
+            p_employee_id,
+            p_plant_id,
+            p_visibility_permission_pattern
+        ) vu
+    ),
+    emitted AS (
+        SELECT fe.unit_id, SUM(fe.quantity_co2e) AS total
+        FROM vw_fact_emission fe
+        JOIN visible vu ON vu.unit_id = fe.unit_id
+        WHERE fe.unit_id IS NOT NULL
+          AND EXTRACT(YEAR FROM fe.period_start)::integer = p_reference_year
+          AND (
+              p_months IS NULL
+              OR cardinality(p_months) = 0
+              OR EXTRACT(MONTH FROM fe.period_start)::integer = ANY(p_months)
+          )
+        GROUP BY fe.unit_id
+    ),
+    reduced AS (
+        SELECT fr.unit_id, SUM(fr.quantity_co2e) AS total
+        FROM vw_fact_reduction fr
+        JOIN visible vu ON vu.unit_id = fr.unit_id
+        WHERE fr.unit_id IS NOT NULL
+          AND EXTRACT(YEAR FROM fr.period_start)::integer = p_reference_year
+          AND (
+              p_months IS NULL
+              OR cardinality(p_months) = 0
+              OR EXTRACT(MONTH FROM fr.period_start)::integer = ANY(p_months)
+          )
+        GROUP BY fr.unit_id
+    )
+    SELECT
+        u.id,
+        u.cnpj::text,
+        COALESCE(r.total, 0),
+        CASE
+            WHEN COALESCE(e.total, 0) = 0 THEN NULL
+            ELSE GREATEST(
+                p_minimum_reduction_pct,
+                (e.total - COALESCE(r.total, 0)) / e.total * p_percentage_scale
+            )
+        END
+    FROM visible vu
+    JOIN unit u ON u.id = vu.unit_id
+    LEFT JOIN emitted e ON e.unit_id = u.id
+    LEFT JOIN reduced r ON r.unit_id = u.id
+    ORDER BY u.id;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_plants_table(integer, integer, integer[], integer, text, numeric, numeric) IS
+    'Returns filtered visible plants with annual reduction savings and caller-defined percentage scale and floor. DASH-FR-001, DASH-FR-004, DASH-FR-010, DASH-FR-014, DASH-NFR-002, DASH-NFR-004.';
+
+-- Detects lower-tail production anomalies from each plant's historical distribution.
+CREATE OR REPLACE FUNCTION fn_dash_production_alert(
+    p_employee_id integer,
+    p_reference_year integer,
+    p_months integer[],
+    p_plant_id integer,
+    p_visibility_permission_pattern text,
+    p_stddev_multiplier numeric,
+    p_minimum_history_years integer
+)
+RETURNS TABLE (
+    plant_id integer,
+    plant_name text,
+    last_year integer,
+    last_year_tco2e numeric,
+    historical_mean_tco2e numeric,
+    historical_stddev_tco2e numeric,
+    sample_years integer,
+    threshold_tco2e numeric,
+    is_alert boolean
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_reference_year IS NULL
+       OR p_stddev_multiplier IS NULL OR p_stddev_multiplier < 0
+       OR p_minimum_history_years IS NULL OR p_minimum_history_years <= 0
+       OR EXISTS (
+           SELECT 1 FROM unnest(p_months) AS selected_month
+           WHERE selected_month IS NULL OR selected_month NOT BETWEEN 1 AND 12
+       ) THEN
+        RAISE EXCEPTION 'invalid dashboard parameters'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH visible AS MATERIALIZED (
+        SELECT vu.unit_id
+        FROM fn_dash_visible_units(
+            p_employee_id,
+            p_plant_id,
+            p_visibility_permission_pattern
+        ) vu
+    ),
+    annual_series AS (
+        SELECT
+            fe.unit_id,
+            EXTRACT(YEAR FROM fe.period_start)::integer AS period_year,
+            SUM(fe.quantity_co2e) AS total_tco2e
+        FROM vw_fact_emission fe
+        JOIN visible vu ON vu.unit_id = fe.unit_id
+        WHERE fe.unit_id IS NOT NULL
+          AND EXTRACT(YEAR FROM fe.period_start)::integer <= p_reference_year
+          AND (
+              p_months IS NULL
+              OR cardinality(p_months) = 0
+              OR EXTRACT(MONTH FROM fe.period_start)::integer = ANY(p_months)
+          )
+        GROUP BY fe.unit_id, EXTRACT(YEAR FROM fe.period_start)::integer
+    ),
+    plant_stats AS (
+        SELECT
+            u.id AS unit_id,
+            u.cnpj::text AS unit_name,
+            p_reference_year AS period_year,
+            COALESCE(current_year.total_tco2e, 0) AS current_total,
+            history.mean_tco2e,
+            history.stddev_tco2e,
+            COALESCE(history.year_count, 0)::integer AS year_count
+        FROM visible vu
+        JOIN unit u ON u.id = vu.unit_id
+        LEFT JOIN annual_series current_year
+          ON current_year.unit_id = u.id
+         AND current_year.period_year = p_reference_year
+        LEFT JOIN LATERAL (
+            SELECT
+                AVG(s.total_tco2e) AS mean_tco2e,
+                STDDEV_SAMP(s.total_tco2e) AS stddev_tco2e,
+                COUNT(*) AS year_count
+            FROM annual_series s
+            WHERE s.unit_id = u.id
+              AND s.period_year < p_reference_year
+        ) history ON true
+    )
+    SELECT
+        ps.unit_id,
+        ps.unit_name,
+        ps.period_year,
+        ps.current_total,
+        ps.mean_tco2e,
+        ps.stddev_tco2e,
+        ps.year_count,
+        ps.mean_tco2e - (p_stddev_multiplier * ps.stddev_tco2e),
+        ps.year_count >= p_minimum_history_years
+            AND ps.stddev_tco2e IS NOT NULL
+            AND ps.current_total
+                < ps.mean_tco2e - (p_stddev_multiplier * ps.stddev_tco2e)
+    FROM plant_stats ps
+    ORDER BY ps.unit_id;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_production_alert(integer, integer, integer[], integer, text, numeric, integer) IS
+    'Returns filtered lower-tail production alerts using historical mean minus a caller-defined multiple of sample standard deviation. DASH-FR-001, DASH-FR-004, DASH-FR-008, DASH-FR-011, DASH-FR-014, DASH-NFR-004.';
+
+-- Counts critical production alerts in the reference and previous years.
+CREATE OR REPLACE FUNCTION fn_dash_critical_anomalies(
+    p_employee_id integer,
+    p_reference_year integer,
+    p_months integer[],
+    p_plant_id integer,
+    p_visibility_permission_pattern text,
+    p_previous_year_offset integer,
+    p_percentage_scale numeric,
+    p_stddev_multiplier numeric,
+    p_minimum_history_years integer
+)
+RETURNS TABLE (
+    critical_count integer,
+    previous_count integer,
+    variation_pct numeric
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_reference_year IS NULL
+       OR p_previous_year_offset IS NULL OR p_previous_year_offset <= 0
+       OR p_percentage_scale IS NULL OR p_percentage_scale <= 0 THEN
+        RAISE EXCEPTION 'invalid dashboard parameters'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH visible AS MATERIALIZED (
+        SELECT vu.unit_id
+        FROM fn_dash_visible_units(
+            p_employee_id,
+            p_plant_id,
+            p_visibility_permission_pattern
+        ) vu
+    ),
+    visibility_guard AS MATERIALIZED (
+        SELECT COUNT(*) AS unit_count
+        FROM visible
+    ),
+    counts AS (
+        SELECT
+            (
+                SELECT COUNT(*)::integer
+                FROM fn_dash_production_alert(
+                    p_employee_id,
+                    p_reference_year,
+                    p_months,
+                    p_plant_id,
+                    p_visibility_permission_pattern,
+                    p_stddev_multiplier,
+                    p_minimum_history_years
+                ) a
+                WHERE a.is_alert
+            ) AS current_count,
+            (
+                SELECT COUNT(*)::integer
+                FROM fn_dash_production_alert(
+                    p_employee_id,
+                    p_reference_year - p_previous_year_offset,
+                    p_months,
+                    p_plant_id,
+                    p_visibility_permission_pattern,
+                    p_stddev_multiplier,
+                    p_minimum_history_years
+                ) a
+                WHERE a.is_alert
+            ) AS prior_count
+        FROM visibility_guard
+    )
+    SELECT
+        c.current_count,
+        c.prior_count,
+        CASE
+            WHEN c.prior_count = 0 THEN NULL
+            ELSE (c.current_count - c.prior_count)::numeric
+                / c.prior_count * p_percentage_scale
+        END
+    FROM counts c;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_critical_anomalies(integer, integer, integer[], integer, text, integer, numeric, numeric, integer) IS
+    'Counts filtered production alerts in caller-defined comparison years using the same statistical parameters as fn_dash_production_alert. DASH-FR-001, DASH-FR-004, DASH-FR-008, DASH-FR-014, DASH-NFR-002.';
+
+-- Returns annual polluting, biogenic, and reduced tCO2e series.
+CREATE OR REPLACE FUNCTION fn_dash_emissions_series(
+    p_employee_id integer,
+    p_start_year integer,
+    p_end_year integer,
+    p_months integer[],
+    p_plant_id integer,
+    p_visibility_permission_pattern text
+)
+RETURNS TABLE (
+    period_year integer,
+    polluting_tco2e numeric,
+    green_tco2e numeric,
+    reduced_tco2e numeric
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_start_year IS NULL OR p_end_year IS NULL OR p_start_year > p_end_year
+       OR EXISTS (
+           SELECT 1 FROM unnest(p_months) AS selected_month
+           WHERE selected_month IS NULL OR selected_month NOT BETWEEN 1 AND 12
+       ) THEN
+        RAISE EXCEPTION 'invalid dashboard parameters'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH visible AS MATERIALIZED (
+        SELECT vu.unit_id
+        FROM fn_dash_visible_units(
+            p_employee_id,
+            p_plant_id,
+            p_visibility_permission_pattern
+        ) vu
+    ),
+    emissions AS (
+        SELECT
+            EXTRACT(YEAR FROM fe.period_start)::integer AS fact_year,
+            SUM(fe.quantity_co2e) FILTER (WHERE NOT fe.gas_is_biogenic) AS polluting,
+            SUM(fe.quantity_co2e) FILTER (WHERE fe.gas_is_biogenic) AS green
+        FROM vw_fact_emission fe
+        JOIN visible vu ON vu.unit_id = fe.unit_id
+        WHERE fe.unit_id IS NOT NULL
+          AND EXTRACT(YEAR FROM fe.period_start)::integer
+              BETWEEN p_start_year AND p_end_year
+          AND (
+              p_months IS NULL
+              OR cardinality(p_months) = 0
+              OR EXTRACT(MONTH FROM fe.period_start)::integer = ANY(p_months)
+          )
+        GROUP BY EXTRACT(YEAR FROM fe.period_start)::integer
+    ),
+    reductions AS (
+        SELECT
+            EXTRACT(YEAR FROM fr.period_start)::integer AS fact_year,
+            SUM(fr.quantity_co2e) AS reduced
+        FROM vw_fact_reduction fr
+        JOIN visible vu ON vu.unit_id = fr.unit_id
+        WHERE fr.unit_id IS NOT NULL
+          AND EXTRACT(YEAR FROM fr.period_start)::integer
+              BETWEEN p_start_year AND p_end_year
+          AND (
+              p_months IS NULL
+              OR cardinality(p_months) = 0
+              OR EXTRACT(MONTH FROM fr.period_start)::integer = ANY(p_months)
+          )
+        GROUP BY EXTRACT(YEAR FROM fr.period_start)::integer
+    ),
+    years AS (
+        SELECT e.fact_year FROM emissions e
+        UNION
+        SELECT r.fact_year FROM reductions r
+    )
+    SELECT
+        y.fact_year,
+        COALESCE(e.polluting, 0),
+        COALESCE(e.green, 0),
+        COALESCE(r.reduced, 0)
+    FROM years y
+    LEFT JOIN emissions e ON e.fact_year = y.fact_year
+    LEFT JOIN reductions r ON r.fact_year = y.fact_year
+    ORDER BY y.fact_year;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_emissions_series(integer, integer, integer, integer[], integer, text) IS
+    'Returns the filtered annual series of non-biogenic emissions, biogenic emissions, and reductions within a caller-defined year range. DASH-FR-001, DASH-FR-004, DASH-FR-012, DASH-NFR-004.';
+
+-- Returns annual emission totals and shares by scope.
+CREATE OR REPLACE FUNCTION fn_dash_emissions_by_scope(
+    p_employee_id integer,
+    p_reference_year integer,
+    p_months integer[],
+    p_plant_id integer,
+    p_visibility_permission_pattern text,
+    p_percentage_scale numeric
+)
+RETURNS TABLE (
+    scope_id integer,
+    scope_name text,
+    emitted_tco2e numeric,
+    share_pct numeric
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF p_reference_year IS NULL
+       OR p_percentage_scale IS NULL OR p_percentage_scale <= 0
+       OR EXISTS (
+           SELECT 1 FROM unnest(p_months) AS selected_month
+           WHERE selected_month IS NULL OR selected_month NOT BETWEEN 1 AND 12
+       ) THEN
+        RAISE EXCEPTION 'invalid dashboard parameters'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH visible AS MATERIALIZED (
+        SELECT vu.unit_id
+        FROM fn_dash_visible_units(
+            p_employee_id,
+            p_plant_id,
+            p_visibility_permission_pattern
+        ) vu
+    ),
+    by_scope AS (
+        SELECT
+            fe.scope_id,
+            fe.scope_name::text,
+            SUM(fe.quantity_co2e) AS emitted
+        FROM vw_fact_emission fe
+        JOIN visible vu ON vu.unit_id = fe.unit_id
+        WHERE fe.unit_id IS NOT NULL
+          AND fe.scope_id IS NOT NULL
+          AND EXTRACT(YEAR FROM fe.period_start)::integer = p_reference_year
+          AND (
+              p_months IS NULL
+              OR cardinality(p_months) = 0
+              OR EXTRACT(MONTH FROM fe.period_start)::integer = ANY(p_months)
+          )
+        GROUP BY fe.scope_id, fe.scope_name
+    ),
+    with_total AS (
+        SELECT
+            bs.*,
+            SUM(bs.emitted) OVER () AS total_emitted
+        FROM by_scope bs
+    )
+    SELECT
+        wt.scope_id,
+        wt.scope_name,
+        wt.emitted,
+        wt.emitted / wt.total_emitted * p_percentage_scale
+    FROM with_total wt
+    WHERE wt.total_emitted <> 0
+    ORDER BY wt.scope_id;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_dash_emissions_by_scope(integer, integer, integer[], integer, text, numeric) IS
+    'Returns filtered emitted tCO2e and caller-scaled participation by scope, with no rows when the total is zero. DASH-FR-001, DASH-FR-004, DASH-FR-013, DASH-FR-014, DASH-NFR-002, DASH-NFR-004.';
+
+REVOKE ALL ON FUNCTION fn_dash_visible_units(integer, integer, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_dash_generated_savings(integer, integer, integer[], integer, text, integer, numeric) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_dash_analyses(integer, integer, integer[], integer, text, integer, numeric) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_dash_active_plants(integer, integer, integer[], integer, text, integer, numeric, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_dash_critical_anomalies(integer, integer, integer[], integer, text, integer, numeric, numeric, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_dash_average_insertion_interval(integer, integer, integer[], integer, text, numeric) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_dash_plants_table(integer, integer, integer[], integer, text, numeric, numeric) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_dash_production_alert(integer, integer, integer[], integer, text, numeric, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_dash_emissions_series(integer, integer, integer, integer[], integer, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_dash_emissions_by_scope(integer, integer, integer[], integer, text, numeric) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION fn_dash_visible_units(integer, integer, text) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_dash_generated_savings(integer, integer, integer[], integer, text, integer, numeric) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_dash_analyses(integer, integer, integer[], integer, text, integer, numeric) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_dash_active_plants(integer, integer, integer[], integer, text, integer, numeric, boolean) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_dash_critical_anomalies(integer, integer, integer[], integer, text, integer, numeric, numeric, integer) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_dash_average_insertion_interval(integer, integer, integer[], integer, text, numeric) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_dash_plants_table(integer, integer, integer[], integer, text, numeric, numeric) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_dash_production_alert(integer, integer, integer[], integer, text, numeric, integer) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_dash_emissions_series(integer, integer, integer, integer[], integer, text) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_dash_emissions_by_scope(integer, integer, integer[], integer, text, numeric) TO aether_app, aether_auditor, aether_admin;
+
 GRANT SELECT ON vw_dim_org_hierarchy, vw_fact_emission, vw_fact_reduction, vw_analytics_org_period
     TO aether_app, aether_auditor, aether_admin;
 

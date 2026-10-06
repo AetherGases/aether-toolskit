@@ -149,10 +149,12 @@ CREATE TABLE permission (
     id SERIAL,
     name VARCHAR(150) NOT NULL,
     description VARCHAR(150),
-    url VARCHAR(50) NOT NULL,
+    pattern VARCHAR(150) NOT NULL,
     created_at TIMESTAMP DEFAULT current_timestamp,
     updated_at TIMESTAMP,
-    CONSTRAINT pk_permission PRIMARY KEY (id)
+    CONSTRAINT pk_permission PRIMARY KEY (id),
+    CONSTRAINT uq_permission_pattern UNIQUE (pattern),
+    CONSTRAINT ck_permission_pattern_not_empty CHECK (btrim(pattern) <> '')
 );
 
 CREATE TABLE permission_group_permission (
