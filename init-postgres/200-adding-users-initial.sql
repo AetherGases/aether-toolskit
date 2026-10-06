@@ -76,10 +76,8 @@ INSERT INTO gas (id, name, formula, is_biogenic, gwp) VALUES
     (6, 'Hexafluoreto de enxofre', 'SF6', FALSE, 23500);
 
 -- permission
-INSERT INTO permission (id, name, description, url) VALUES
-    (1, 'Visualizar inventários', 'Consulta de inventários de emissões', '/inventory/view'),
-    (2, 'Editar inventários', 'Edição de inventários de emissões', '/inventory/edit'),
-    (3, 'Gerenciar funcionários', 'Administração de funcionários da empresa', '/employees/manage');
+INSERT INTO permission (id, name, description, pattern) VALUES
+    (1, 'user:analytics:visibility:high', 'High analytics visibility across the enterprise hierarchy', 'user:analytics:visibility:high');
 
 -- permission_group (one default group per enterprise + one global QA group)
 INSERT INTO permission_group (id, description, id_enterprise) VALUES
@@ -88,18 +86,9 @@ INSERT INTO permission_group (id, description, id_enterprise) VALUES
     (3, 'Grupo padrão Vale Circular', 3),
     (4, 'Grupo global QA', NULL);
 
--- permission_group_permission
+-- permission_group_permission (analytics visibility only on Aurora default group)
 INSERT INTO permission_group_permission (id, id_permission, id_permission_group) VALUES
-    (1, 1, 1),
-    (2, 2, 1),
-    (3, 3, 1),
-    (4, 1, 2),
-    (5, 2, 2),
-    (6, 1, 3),
-    (7, 2, 3),
-    (8, 1, 4),
-    (9, 2, 4),
-    (10, 3, 4);
+    (1, 1, 1);
 
 -- employee
 INSERT INTO employee (id, cpf, name, email, phone, password_hash, employee_status, id_department, id_permission_group) VALUES
