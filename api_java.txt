@@ -1,0 +1,439 @@
+{"openapi": "3.1.0","info": {"title": "Aether Core API","description": "Aqui você encontra todas as rotas da API e o que é necessário enviar de parâmetros para elas funcionarem.","termsOfService": "","license": {"name": "Apache 2.0","url": ""},"version": "v1"},"servers": [{"url": "http://localhost:3000","description": "Generated server url"}],"security": [{"BearerAuth": []}],"tags": [{"name": "Profile","description": "Rotas para visualização e atualização do usuário logado."},{"name": "Auth","description": "Rotas responsáveis pela autenticação dos usuários."}],"paths": {"/api/auth/refresh/{email}": {"put": {"tags": ["Auth"],"summary": "Realiza o refresh de um token JWT de um usuário já autenticado.","description": "Realiza o refresh de um token JWT.","operationId": "refreshToken","parameters": [{"name": "email","in": "path","required": true,"schema": {"type": "string","format": "email"}},{"name": "Authorization","in": "header","required": true,"schema": {"type": "string","minLength": 1}}],"responses": {"200": {"description": "Success","content": {"application/json": {"schema": {"type": "array","items": {"$ref": "#/components/schemas/LoginOutputDTO"}}}}},"400": {"description": "Bad Request"},"401": {"description": "Unhautorized"},"403": {"description": "Forbidden"},"500": {"description": "Internal Server Error"}}}},"/api/auth/reset-password/validate-code": {"post": {"tags": ["Auth"],"summary": "Valida o código enviado ao e-mail.","description": "Valida se o código enviado ao e-mail é válido.","operationId": "resetPasswordValidateCode","requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResetPasswordValidateCodeRequestDTO"}}},"required": true},"responses": {"200": {"description": "Success","content": {"application/json": {"schema": {"type": "array","items": {"$ref": "#/components/schemas/ResetPasswordValidateCodeOutputDTO"}}}}},"400": {"description": "Bad Request"},"401": {"description": "Unhautorized"},"403": {"description": "Forbidden"},"500": {"description": "Internal Server Error"}}}},"/api/auth/reset-password/send-code": {"post": {"tags": ["Auth"],"summary": "Envia um código para o e-mail informado.","description": "Envia um código para o e-mail informado se o mesmo estiver ativo.","operationId": "resetPasswordSendCode","requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResetPasswordSendCodeRequestDTO"}}},"required": true},"responses": {"204": {"description": "No content","content": {"application/json": {}}},"400": {"description": "Bad Request"},"401": {"description": "Unhautorized"},"403": {"description": "Forbidden"},"500": {"description": "Internal Server Error"}}}},"/api/auth/reset-password/resend-code": {"post": {"tags": ["Auth"],"summary": "Reenvia um código para o e-mail informado.","description": "Reenvia um código para o e-mail informado se o mesmo estiver ativo.","operationId": "resetPasswordResendCode","requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResetPasswordResendCodeRequestDTO"}}},"required": true},"responses": {"204": {"description": "No content","content": {"application/json": {}}},"400": {"description": "Bad Request"},"401": {"description": "Unhautorized"},"403": {"description": "Forbidden"},"500": {"description": "Internal Server Error"}}}},"/api/auth/reset-password/change-password": {"post": {"tags": ["Auth"],"operationId": "resetPasswordChangePassword","requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResetPasswordChangePasswordRequestDTO"}}},"required": true},"responses": {"200": {"description": "OK"}}}},"/api/auth/register": {"post": {"tags": ["Auth"],"summary": "Cadastra um funcionário no sistema, rota que deve ser removida após o dataload ficar pronto.","description": "Cadastra um usuário no sistema.","operationId": "register","requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/RegisterRequestDTO"}}},"required": true},"responses": {"200": {"description": "Success","content": {"application/json": {"schema": {"type": "array","items": {"$ref": "#/components/schemas/RegisterOutputDTO"}}}}},"400": {"description": "Bad Request"},"401": {"description": "Unhautorized"},"403": {"description": "Forbidden"},"500": {"description": "Internal Server Error"}}}},"/api/auth/login": {"post": {"tags": ["Auth"],"summary": "Realiza login um usuário no sistema.","description": "Busca e valida a senha de um usuário.","operationId": "login","requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginRequestDTO"}}},"required": true},"responses": {"200": {"description": "Success","content": {"application/json": {"schema": {"type": "array","items": {"$ref": "#/components/schemas/LoginOutputDTO"}}}}},"400": {"description": "Bad Request"},"401": {"description": "Unhautorized"},"403": {"description": "Forbidden"},"500": {"description": "Internal Server Error"}}}},"/api/profile": {"get": {"tags": ["Profile"],"summary": "Retorna dados do usuário logado.","description": "Retorna dados e permissões do usuário logado no sistema.","operationId": "getMyProfile","responses": {"200": {"description": "Success","content": {"application/json": {"schema": {"type": "array","items": {"$ref": "#/components/schemas/GetMyProfileOutputDTO"}}}}},"400": {"description": "Bad Request"},"401": {"description": "Unhautorized"},"403": {"description": "Forbidden"},"500": {"description": "Internal Server Error"}}},"patch": {"tags": ["Profile"],"summary": "Atualiza alguns dados do usuário logado","description": "Atualiza alguns dados do usuário logado.","operationId": "updateProfile","requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateProfileRequestDTO"}}},"required": true},"responses": {"200": {"description": "Success","content": {"application/json": {"schema": {"type": "array","items": {"$ref": "#/components/schemas/UpdateProfileOutputDTO"}}}}},"400": {"description": "Bad Request"},"401": {"description": "Unhautorized"},"403": {"description": "Forbidden"},"500": {"description": "Internal Server Error"}}}}},"components": {"schemas": {"LoginOutputDTO": {"type": "object","properties": {"email": {"type": "string"},"authenticated": {"type": "boolean"},"created": {"type": "string","format": "date-time"},"expiration": {"type": "string","format": "date-time"},"accessToken": {"type": "string"},"refreshToken": {"type": "string"}}},"ResetPasswordValidateCodeOutputDTO": {"type": "object","properties": {"key": {"type": "string"}}},"ResetPasswordValidateCodeRequestDTO": {"type": "object","properties": {"email": {"type": "string","format": "email","description": "O e-mail do usuário","example": "aether@dominio.com","minLength": 1},"code": {"type": "string","description": "O código enviado via e-mail","example": "123456","minLength": 1,"pattern": "^\\d{6}$"}},"required": ["code","email"]},"ResetPasswordSendCodeRequestDTO": {"type": "object","properties": {"email": {"type": "string","format": "email","description": "O e-mail do usuário","example": "aether@dominio.com","minLength": 1}},"required": ["email"]},"ResetPasswordResendCodeRequestDTO": {"type": "object","properties": {"email": {"type": "string","format": "email","description": "O e-mail do usuário","example": "aether@dominio.com","minLength": 1}},"required": ["email"]},"ResetPasswordChangePasswordRequestDTO": {"type": "object","properties": {"email": {"type": "string","format": "email","description": "O e-mail do usuário","example": "aether@dominio.com","minLength": 1},"key": {"type": "string","description": "A chave UUID gerada pela rota /api/auth/validate-code","example": "53a649a9-4a7a-451b-933a-ab7012b95f51","maxLength": 36,"minLength": 36},"password": {"type": "string","maxLength": 28,"minLength": 8,"pattern": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).*$"}},"required": ["email","key","password"]},"RegisterOutputDTO": {"type": "object","properties": {"id": {"type": "integer","format": "int32"},"cpf": {"type": "string"},"name": {"type": "string"},"email": {"type": "string"},"phone": {"type": "string"}}},"RegisterRequestDTO": {"type": "object","properties": {"cpf": {"type": "string","minLength": 1,"pattern": "^(\\d{11}|\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2})$"},"name": {"type": "string","description": "O nome do novo usuário","example": "José Benício da Silva Rodrigues","maxLength": 150,"minLength": 3,"pattern": "^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:\\s+[A-Za-zÀ-ÖØ-öø-ÿ]+)*$"},"email": {"type": "string","format": "email","description": "O e-mail do novo usuário","example": "aether@dominio.com","minLength": 1},"password": {"type": "string","description": "A senha do novo usuário","example": "Senha123","maxLength": 28,"minLength": 8,"pattern": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).*$"},"phone": {"type": "string","description": "O telefone do novo usuário","example": "(11) 99999-9999","minLength": 1,"pattern": "^(\\(\\d{2}\\)|\\d{2})\\s?\\d{4,5}-?\\d{4}$"}},"required": ["cpf","email","name","password","phone"]},"LoginRequestDTO": {"type": "object","properties": {"email": {"type": "string","description": "O e-mail do usuário a ser logado","example": "aether@dominio.com","minLength": 1},"password": {"type": "string","description": "A senha deste usuário","example": "Senha123","minLength": 1}},"required": ["email","password"]},"UpdateProfileOutputDTO": {"type": "object","properties": {"id": {"type": "integer","format": "int32"},"name": {"type": "string"},"cpf": {"type": "string"},"email": {"type": "string"},"phone": {"type": "string"}}},"ImageRequest": {"type": "object","properties": {"imageName": {"type": "string","description": "Nome da nova imagem de perfil","example": "novaImagem.png","maxLength": 150,"minLength": 3},"imageUrl": {"type": "string","description": "URL da nova imagem do avatar","example": "https://cloudinary/imagem.png","maxLength": 255,"minLength": 3}},"required": ["imageName","imageUrl"]},"UpdateProfileRequestDTO": {"type": "object","properties": {"name": {"type": "string","description": "Novo nome do usuário","example": "José Benício da Silva Rodrigues","maxLength": 150,"minLength": 3,"pattern": "^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:\\s+[A-Za-zÀ-ÖØ-öø-ÿ]+)*$"},"phone": {"type": "string","description": "Novo telefone do usuário logado","example": "(11) 99999-9999","pattern": "^(\\(\\d{2}\\)|\\d{2})\\s?\\d{4,5}-?\\d{4}$"},"newPassword": {"type": "string","description": "Nova senha do usuário autenticado","example": "Senha123","maxLength": 28,"minLength": 8,"pattern": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).*$"},"image": {"$ref": "#/components/schemas/ImageRequest"}}},"Address": {"type": "object","properties": {"id": {"type": "integer","format": "int32"},"zipCode": {"type": "string"},"state": {"type": "string"},"city": {"type": "string"},"neighborhood": {"type": "string"},"street": {"type": "string"},"number": {"type": "integer","format": "int32"},"complement": {"type": "string"}}},"GetMyProfileOutputDTO": {"type": "object","properties": {"id": {"type": "integer","format": "int32"},"cpf": {"type": "string"},"email": {"type": "string"},"name": {"type": "string"},"phone": {"type": "string"},"image": {"$ref": "#/components/schemas/Image"},"permissions": {"type": "array","items": {"$ref": "#/components/schemas/Permission"}},"unit": {"$ref": "#/components/schemas/Unit"}}},"Image": {"type": "object","properties": {"id": {"type": "integer","format": "int32"},"name": {"type": "string"},"path": {"type": "string"}}},"Permission": {"type": "object","properties": {"id": {"type": "integer","format": "int32"},"name": {"type": "string"},"description": {"type": "string"}}},"Unit": {"type": "object","properties": {"id": {"type": "integer","format": "int32"},"cnae": {"type": "string"},"cnpj": {"type": "string"},"isActive": {"type": "boolean"},"address": {"$ref": "#/components/schemas/Address"}}}},"securitySchemes": {"BearerAuth": {"type": "http","name": "BearerAuth","scheme": "bearer","bearerFormat": "JWT"}}}}
+
+
+{
+"openapi": "3.1.0",
+"info": {
+"title": "Aether MS Inventory",
+"description": "Swagger do microsserviço responsável pelos inventórios gerados dentro da aplicação Aether.",
+"termsOfService": "",
+"license": {
+"name": "Apache 2.0",
+"url": ""
+},
+"version": "v1"
+},
+"servers": [
+{
+"url": "http://localhost:3003",
+"description": "Generated server url"
+}
+],
+"security": [
+{
+"BearerAuth": []
+}
+],
+"tags": [
+{
+"name": "Inventories",
+"description": "Rotas para CRUD dos relatórios gerados ou enviados pelos usuários."
+}
+],
+"paths": {
+"/api/inventories": {
+"post": {
+"tags": [
+"Inventories"
+],
+"summary": "Recebe um relatório do usuário.",
+"description": "Salva um relatório enviado pelo usuário e salvo na Cloudinary.",
+"operationId": "registerInventory",
+"requestBody": {
+"content": {
+"application/json": {
+"schema": {
+"$ref": "#/components/schemas/RegisterInventoryRequestDTO"
+}
+}
+},
+"required": true
+},
+"responses": {
+"201": {
+"description": "Success",
+"content": {
+"application/json": {
+"schema": {
+"type": "array",
+"items": {
+"$ref": "#/components/schemas/RegisterInventoryOutputDTO"
+}
+}
+}
+}
+},
+"400": {
+"description": "Bad Request"
+},
+"401": {
+"description": "Unhautorized"
+},
+"403": {
+"description": "Forbidden"
+},
+"500": {
+"description": "Internal Server Error"
+}
+}
+}
+},
+"/api/inventories/pending": {
+"get": {
+"tags": [
+"Inventories"
+],
+"summary": "Retorna os relatórios a serem validados.",
+"description": "Retorna os relatórios a serem validados pelo usuário logado.",
+"operationId": "findManyPendingInventories",
+"parameters": [
+{
+"name": "name",
+"in": "query",
+"description": "O filtro de nome dos relatórios",
+"required": false,
+"schema": {
+"type": "string",
+"description": "O filtro de nome dos relatórios",
+"example": "Inventário"
+},
+"example": "Inventário"
+},
+{
+"name": "take",
+"in": "query",
+"description": "Quantos relatórios deve retornar",
+"required": false,
+"schema": {
+"type": "integer",
+"format": "int32",
+"description": "Quantos relatórios deve retornar",
+"example": 6,
+"maximum": 6,
+"minimum": 1
+},
+"example": 6
+},
+{
+"name": "skip",
+"in": "query",
+"description": "Quantos relatórios deve pular",
+"required": false,
+"schema": {
+"type": "integer",
+"format": "int32",
+"description": "Quantos relatórios deve pular",
+"example": 0,
+"minimum": 0
+},
+"example": 0
+}
+],
+"responses": {
+"200": {
+"description": "Success",
+"content": {
+"application/json": {
+"schema": {
+"type": "array",
+"items": {
+"$ref": "#/components/schemas/FindManyPendingInventoriesOutputDTO"
+}
+}
+}
+}
+},
+"400": {
+"description": "Bad Request"
+},
+"401": {
+"description": "Unhautorized"
+},
+"403": {
+"description": "Forbidden"
+},
+"500": {
+"description": "Internal Server Error"
+}
+}
+}
+},
+"/api/inventories/mine": {
+"get": {
+"tags": [
+"Inventories"
+],
+"summary": "Retorna os relatórios do usuário logado.",
+"description": "Retorna os relatórios gerados ou enviados pelo usuário logado no sistema.",
+"operationId": "findMyInventoriesHistory",
+"parameters": [
+{
+"name": "name",
+"in": "query",
+"description": "O filtro de nome dos relatórios",
+"required": false,
+"schema": {
+"type": "string",
+"description": "O filtro de nome dos relatórios",
+"example": "Inventário"
+},
+"example": "Inventário"
+},
+{
+"name": "status",
+"in": "query",
+"description": "O filtro de status a ser aplicado nos relatórios",
+"required": false,
+"schema": {
+"type": "string",
+"description": "O filtro de status a ser aplicado nos relatórios",
+"enum": [
+"UNDER_REVIEW",
+"APPROVED",
+"REJECTED",
+"PROCESSING",
+"PROCESSING_FAILED",
+"REQUESTED",
+"ISSUED"
+],
+"example": "UNDER_REVIEW"
+},
+"example": "UNDER_REVIEW"
+},
+{
+"name": "take",
+"in": "query",
+"description": "Quantos relatórios deve retornar",
+"required": false,
+"schema": {
+"type": "integer",
+"format": "int32",
+"description": "Quantos relatórios deve retornar",
+"example": 6,
+"maximum": 6,
+"minimum": 1
+},
+"example": 6
+},
+{
+"name": "skip",
+"in": "query",
+"description": "Quantos relatórios deve pular",
+"required": false,
+"schema": {
+"type": "integer",
+"format": "int32",
+"description": "Quantos relatórios deve pular",
+"example": 0,
+"minimum": 0
+},
+"example": 0
+}
+],
+"responses": {
+"200": {
+"description": "Success",
+"content": {
+"application/json": {
+"schema": {
+"type": "array",
+"items": {
+"$ref": "#/components/schemas/FindMyInventoriesHistoryOutputDTO"
+}
+}
+}
+}
+},
+"400": {
+"description": "Bad Request"
+},
+"401": {
+"description": "Unhautorized"
+},
+"403": {
+"description": "Forbidden"
+},
+"500": {
+"description": "Internal Server Error"
+}
+}
+}
+}
+},
+"components": {
+"schemas": {
+"RegisterInventoryOutputDTO": {
+"type": "object",
+"properties": {
+"id": {
+"type": "integer",
+"format": "int32"
+},
+"name": {
+"type": "string"
+},
+"type": {
+"type": "string",
+"enum": [
+"INPUT",
+"OUTPUT"
+]
+},
+"status": {
+"type": "string",
+"enum": [
+"UNDER_REVIEW",
+"APPROVED",
+"REJECTED",
+"PROCESSING",
+"PROCESSING_FAILED",
+"REQUESTED",
+"ISSUED"
+]
+},
+"createdAt": {
+"type": "string",
+"format": "date-time"
+},
+"storageFile": {
+"$ref": "#/components/schemas/StorageFile"
+}
+}
+},
+"StorageFile": {
+"type": "object",
+"properties": {
+"id": {
+"type": "integer",
+"format": "int32"
+},
+"fileName": {
+"type": "string"
+},
+"path": {
+"type": "string"
+},
+"createdAt": {
+"type": "string",
+"format": "date-time"
+}
+}
+},
+"RegisterInventoryRequestDTO": {
+"type": "object",
+"properties": {
+"name": {
+"type": "string",
+"description": "O nome do relatório",
+"example": "Relatório de Teste",
+"maxLength": 150,
+"minLength": 3,
+"pattern": "^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:\\s+[A-Za-zÀ-ÖØ-öø-ÿ]+)*$"
+},
+"fileName": {
+"type": "string",
+"description": "É o título do arquivo .xlsx do relatório.",
+"example": "inventario.xlsx",
+"maxLength": 150,
+"minLength": 3
+},
+"path": {
+"type": "string",
+"description": "É o caminho do arquivo hospedado no Cloudinary.",
+"example": "https://cloudinary/exemplo/123excel-teste.xlsx",
+"minLength": 1
+}
+},
+"required": [
+"fileName",
+"name",
+"path"
+]
+},
+"FindManyPendingInventoriesOutputDTO": {
+"type": "object",
+"properties": {
+"inventories": {
+"type": "array",
+"items": {
+"$ref": "#/components/schemas/Inventory"
+}
+},
+"totalCount": {
+"type": "integer",
+"format": "int64"
+}
+}
+},
+"Inventory": {
+"type": "object",
+"properties": {
+"id": {
+"type": "integer",
+"format": "int32"
+},
+"name": {
+"type": "string"
+},
+"createdAt": {
+"type": "string",
+"format": "date-time"
+},
+"status": {
+"type": "string",
+"enum": [
+"UNDER_REVIEW",
+"APPROVED",
+"REJECTED",
+"PROCESSING",
+"PROCESSING_FAILED",
+"REQUESTED",
+"ISSUED"
+]
+},
+"type": {
+"type": "string",
+"enum": [
+"INPUT",
+"OUTPUT"
+]
+}
+}
+},
+"FindMyInventoriesHistoryOutputDTO": {
+"type": "object",
+"properties": {
+"inventories": {
+"type": "array",
+"items": {
+"$ref": "#/components/schemas/Inventory"
+}
+},
+"totalCount": {
+"type": "integer",
+"format": "int64"
+}
+}
+}
+},
+"securitySchemes": {
+"BearerAuth": {
+"type": "http",
+"name": "BearerAuth",
+"scheme": "bearer",
+"bearerFormat": "JWT"
+}
+}
+}
+}
+
+// Cloudinary:
+[POST] /api/cloudinary/upload-signature?fileType=(IMAGE | XLSX)
+response: {
+  "signature": "a1b2c3d4e5f6",
+  "timestamp": 1728067200,
+  "apiKey": "123456789012345",
+  "cloudName": "meu-cloud",
+  "cloudinaryFolder": "uploads",
+  "cloudinaryResourceType": "image"
+}

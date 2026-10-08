@@ -23,5 +23,6 @@ rad.json
 TestResults.xml
 #Env
 .env
+.kube/
 #Resources
 resources/

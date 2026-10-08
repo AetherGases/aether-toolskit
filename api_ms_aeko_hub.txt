@@ -1,0 +1,413 @@
+openapi: 3.1.0
+info:
+  title: Aether AI Gateway
+  description: 'HTTP API for user, session, and report workflows in the Aether core gateway. Every response carries an X-Request-Id header: the identifier of that request in the hub_metrics base.'
+  version: 1.0.0
+paths:
+  /aether-api/v1/ai/user/{id_external_user}:
+    get:
+      tags: [Users]
+      summary: Get user by external identifier
+      description: Retrieves a user profile using the external user identifier stored in the core database.
+      parameters:
+        - name: id_external_user
+          in: path
+          required: true
+          schema: { type: integer, example: 12345 }
+      responses:
+        '200':
+          description: User profile found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponseData' }
+        '404': { description: User not found. }
+        '503': { description: Database connection is unavailable. }
+        '500': { description: Unexpected server error. }
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HTTPValidationError' }
+
+  /aether-api/v1/ai/sessions/user/{id_user}:
+    get:
+      tags: [Sessions]
+      summary: List sessions for a user
+      parameters:
+        - name: id_user
+          in: path
+          required: true
+          schema: { type: string, example: 65a8b3d6c0f8e1d7f4b2c010 }
+      responses:
+        '200':
+          description: Sessions found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SessionResponseData' }
+        '404': { description: No sessions found. }
+        '503': { description: Database unavailable. }
+        '500': { description: Unexpected server error. }
+
+  /aether-api/v1/ai/session/{id_session}/messages:
+    get:
+      tags: [Sessions]
+      summary: List messages for a session
+      parameters:
+        - name: id_session
+          in: path
+          required: true
+          schema: { type: string, example: 65a8b3d6c0f8e1d7f4b2c001 }
+      responses:
+        '200':
+          description: Messages found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MessageResponseData' }
+        '400': { description: Invalid session. }
+        '503': { description: Database unavailable. }
+        '500': { description: Unexpected server error. }
+
+  /aether-api/v1/ai/user/session/message:
+    post:
+      tags: [Sessions]
+      summary: Send a message to the AI session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_session, input, id_user]
+              properties:
+                id_session: { type: string }
+                input: { type: string }
+                id_user: { type: string }
+      responses:
+        '200':
+          description: Message processed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponseData' }
+        '400': { description: Invalid request. }
+        '502': { description: Guardrail rejected. }
+        '500': { description: SDK not initialized or error. }
+
+  /aether-api/v1/ai/user/{id_external_user}/inventory-upload/{ticket}/signature:
+    get:
+      tags: [Inventory Upload]
+      summary: Redeem upload ticket for Cloudinary signature
+      parameters:
+        - name: id_external_user
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: ticket
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Signature returned.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '404': { description: Ticket not found. }
+        '400': { description: Ticket unavailable. }
+        '502': { description: Cloudinary error. }
+        '503': { description: Redis unavailable. }
+        '500': { description: Unexpected server error. }
+
+  /aether-api/v1/ai/user/{id_external_user}/inventory-upload/{ticket}/complete:
+    post:
+      tags: [Inventory Upload]
+      summary: Confirm uploaded inventory file path
+      parameters:
+        - name: id_external_user
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: ticket
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteRequest' }
+      responses:
+        '200':
+          description: Path stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompleteResponse' }
+        '404': { description: Ticket not found. }
+        '400': { description: Cannot confirm path. }
+        '503': { description: Redis unavailable. }
+        '500': { description: Unexpected server error. }
+
+  /aether-api/v1/ai/report:
+    post:
+      tags: [Reports]
+      summary: Analyze inventory and return structured extraction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportRequestData' }
+      responses:
+        '200':
+          description: Structured inventory extracted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExtractedInventoryData' }
+        '400': { description: Invalid inventory or catalog. }
+        '404': { description: User not found. }
+        '502': { description: Analysis produced no plan. }
+        '503': { description: Database unavailable. }
+        '500': { description: SDK not initialized or error. }
+
+  /aether-api/v1/ai/report/{id_external_inventory}:
+    get:
+      tags: [Reports]
+      summary: Get textual improvement plan for an inventory
+      parameters:
+        - name: id_external_inventory
+          in: path
+          required: true
+          schema: { type: integer, example: 502 }
+      responses:
+        '200':
+          description: Plan found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementPlanReportData' }
+        '404': { description: Plan not found. }
+        '503': { description: Database unavailable. }
+        '500': { description: Unexpected server error. }
+
+  /aether-api/v1/ai/hub-metrics:
+    get:
+      tags: [Metrics]
+      summary: List every tracked request
+      responses:
+        '200':
+          description: Metrics found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MetricResponseData' }
+        '503': { description: Database unavailable. }
+        '500': { description: Unexpected server error. }
+
+  /aether-api/v1/ai/aeko-metrics:
+    get:
+      tags: [Metrics]
+      summary: List what every AI run cost
+      responses:
+        '200':
+          description: Metrics found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AekoMetricResponseData' }
+        '503': { description: Database unavailable. }
+        '500': { description: Unexpected server error. }
+
+  /aether-api/v1/oauth/authorize:
+    get:
+      tags: [OAuth]
+      summary: Render ChatGPT Sign in webview
+      parameters:
+        - { name: client_id, in: query, required: true, schema: { type: string } }
+        - { name: redirect_uri, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+        - { name: code_challenge, in: query, required: true, schema: { type: string } }
+        - { name: code_challenge_method, in: query, required: true, schema: { type: string } }
+        - { name: response_type, in: query, schema: { type: string, default: code } }
+        - { name: resource, in: query, schema: { type: string, nullable: true } }
+      responses:
+        '200': { description: HTML sign-in page. }
+        '400': { description: Invalid parameters. }
+    post:
+      tags: [OAuth]
+      summary: Authenticate and redirect
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [email, password, client_id, redirect_uri, state, code_challenge, code_challenge_method]
+              properties:
+                email: { type: string }
+                password: { type: string }
+                client_id: { type: string }
+                redirect_uri: { type: string }
+                state: { type: string }
+                code_challenge: { type: string }
+                code_challenge_method: { type: string }
+                resource: { type: string, nullable: true }
+      responses:
+        '302': { description: Redirect with authorization code. }
+        '401': { description: Sign in failed. }
+
+  /aether-api/v1/oauth/token:
+    post:
+      tags: [OAuth]
+      summary: Exchange authorization code for Bearer token
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, code, client_id, redirect_uri, code_verifier]
+              properties:
+                grant_type: { type: string }
+                code: { type: string }
+                client_id: { type: string }
+                redirect_uri: { type: string }
+                code_verifier: { type: string }
+                resource: { type: string, nullable: true }
+      responses:
+        '200': { description: Access token returned. }
+        '400': { description: Invalid request. }
+
+components:
+  schemas:
+    UserResponseData:
+      type: object
+      required: [id_external_user, role, usecase]
+      properties:
+        id_external_user: { type: integer }
+        role: { type: string }
+        usecase: { type: string }
+        id_external_company: { type: integer, nullable: true }
+    SessionResponseData:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    MessageResponseData:
+      type: object
+      required: [input_message, output_message, submitted_at]
+      properties:
+        input_message: { type: string }
+        output_message: { type: string }
+        submitted_at: { type: string, format: date-time }
+    CompleteRequest:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+    CompleteResponse:
+      type: object
+      required: [ticket, state]
+      properties:
+        ticket: { type: string }
+        state: { type: string }
+    CatalogItemData:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+    CategoryCatalogItemData:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        classification: { type: string, enum: [UPSTREAM, DOWNSTREAM], nullable: true }
+    ReportRequestData:
+      type: object
+      required: [id_external_context_inventory, inventory, id_external_user, id_external_company, gases, scopes, categories]
+      properties:
+        id_external_context_inventory: { type: integer }
+        inventory: { type: string }
+        id_external_user: { type: integer }
+        id_external_company: { type: integer }
+        gases: { type: array, items: { $ref: '#/components/schemas/CatalogItemData' } }
+        scopes: { type: array, items: { $ref: '#/components/schemas/CatalogItemData' } }
+        categories: { type: array, items: { $ref: '#/components/schemas/CategoryCatalogItemData' } }
+    InventoryEmissionData:
+      type: object
+      required: [quantity_co2e, is_reduction]
+      properties:
+        quantity_co2e: { type: number }
+        methodology_description: { type: string, nullable: true }
+        supplier_data_percentage: { type: number, nullable: true }
+        gas: { type: integer, nullable: true }
+        scope: { type: integer, nullable: true }
+        category: { type: integer, nullable: true }
+        is_upstream: { type: boolean, nullable: true }
+        is_reduction: { type: boolean }
+    ExtractedInventoryData:
+      type: object
+      required: [emissions]
+      properties:
+        description: { type: string, nullable: true }
+        start_period: { type: string, nullable: true }
+        end_period: { type: string, nullable: true }
+        emissions: { type: array, items: { $ref: '#/components/schemas/InventoryEmissionData' } }
+    ImprovementPlanReportData:
+      type: object
+      required: [defined_problem, solving_method, reasoning]
+      properties:
+        defined_problem: { type: string }
+        solving_method: { type: string }
+        reasoning: { type: string }
+    MetricResponseData:
+      type: object
+      required: [id, latency, response_status, endpoint]
+      properties:
+        id: { type: string }
+        latency: { type: string }
+        response_status: { type: integer }
+        endpoint: { type: string }
+    AgentMetricResponseData:
+      type: object
+      required: [name, input_tokens, output_tokens, llm, used_tools]
+      properties:
+        name: { type: string }
+        input_tokens: { type: integer }
+        output_tokens: { type: integer }
+        llm: { type: string }
+        used_tools: { type: array, items: { type: string } }
+    AekoMetricResponseData:
+      type: object
+      required: [id, id_request, latency, flow, used_agents]
+      properties:
+        id: { type: string }
+        id_request: { type: string }
+        latency: { type: integer }
+        error_description: { type: string, nullable: true }
+        flow: { type: string }
+        used_agents: { type: array, items: { $ref: '#/components/schemas/AgentMetricResponseData' } }
+    HTTPValidationError:
+      type: object
+      properties:
+        detail: { type: array, items: { $ref: '#/components/schemas/ValidationError' } }
+    ValidationError:
+      type: object
+      required: [loc, msg, type]
+      properties:
+        loc: { type: array, items: { oneOf: [{ type: string }, { type: integer }] } }
+        msg: { type: string }
+        type: { type: string }
+
+tags:
+  - name: Users
+  - name: Sessions
+  - name: Reports
+  - name: Metrics
+  - name: OAuth
+  - name: Inventory Upload
