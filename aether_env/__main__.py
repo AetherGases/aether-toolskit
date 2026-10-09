@@ -38,10 +38,14 @@ def main(env: dict[str, str] | None = None) -> int:
     def on_run(state: MenuState) -> int:
         if state.action == "subir-ambiente":
             return actions.subir_ambiente(state.cluster_name or "")
+        if state.action == "escalar-ambiente-zero":
+            return actions.escalar_ambiente_zero(state.cluster_name or "")
         if state.action == "subir":
             return actions.subir_workload(state.cluster_name or "", state.workload_key or "")
         if state.action == "derrubar":
             return actions.derrubar_workload(state.cluster_name or "", state.workload_key or "")
+        if state.action == "escalar-zero":
+            return actions.escalar_workload_zero(state.cluster_name or "", state.workload_key or "")
         if state.action == "update":
             return actions.update_workload(state.cluster_name or "", state.workload_key or "")
         return 1

@@ -23,17 +23,20 @@ from aether_env.awscli import (
     delete_cluster_args,
     delete_nodegroup_args,
     list_nodegroups_args,
+    update_nodegroup_scaling_args,
     wait_cluster_deleted_args,
+    wait_nodegroup_active_args,
     wait_nodegroup_deleted_args,
     describe_cluster_args,
     describe_ecr_args,
+    describe_nodegroup_desired_size_args,
     docker_login_args,
     ecr_password_args,
     ecr_repository,
     image_uri,
     kubeconfig_args,
 )
-from aether_env.catalog import get_workload
+from aether_env.catalog import WORKLOADS, get_workload
 from aether_env.config import SecretConfigError, Settings, application_secret_data
 from aether_env.confirm import phrase_accepted
 from aether_env.images import docker_build_args, docker_push_args, dockerfile_for, rev_parse_args, sync_main_commands
@@ -90,6 +93,9 @@ class Actions:
     def subir_ambiente(self, cluster_name: str) -> int:
         status = self._status(cluster_name)
         if status == "ACTIVE":
+            scaled = self._scale_nodegroups(cluster_name, self.settings.node_count)
+            if scaled != 0:
+                return scaled
             self.write("Cluster already exists.")
             return 0
         if status in (None, "CREATING", "PENDING"):
@@ -179,6 +185,30 @@ class Actions:
             self.write(pods.stdout)
         return 0
 
+    def escalar_ambiente_zero(self, cluster_name: str) -> int:
+        if not self._require_active(cluster_name):
+            return 1
+        if self._ensure_kubeconfig(cluster_name) != 0:
+            return 1
+        kubeconfig = str(self._kubeconfig(cluster_name))
+        failed = False
+        for workload in WORKLOADS:
+            result = self._run(scale_args(kubeconfig, workload.k8s_kind, workload.key, 0))
+            if result.returncode != 0:
+                text = f"{result.stdout}\n{result.stderr}".lower()
+                if "not found" not in text:
+                    self._write_output(result)
+                    failed = True
+        if self._scale_nodegroups(cluster_name, 0) != 0:
+            failed = True
+        if failed:
+            return 1
+        self.write("Scaled to zero. Cluster is still running.")
+        return 0
+
+    def escalar_workload_zero(self, cluster_name: str, key: str) -> int:
+        return self.derrubar_workload(cluster_name, key)
+
     def derrubar_workload(self, cluster_name: str, key: str) -> int:
         if not self._require_active(cluster_name):
             return 1
@@ -215,6 +245,50 @@ class Actions:
         if updated.returncode != 0:
             return updated.returncode
         return self._run(rollout_status_args(kubeconfig, "deployment", key)).returncode
+
+    def _desired_node_size(self, cluster_name: str, nodegroup_name: str) -> int | None:
+        result = self._run(
+            describe_nodegroup_desired_size_args(self.settings.aws_region, cluster_name, nodegroup_name)
+        )
+        if result.returncode != 0:
+            return None
+        text = result.stdout.strip()
+        try:
+            return int(text)
+        except ValueError:
+            return None
+
+    def _scale_nodegroups(self, cluster_name: str, desired: int) -> int:
+        names = self._nodegroup_names(cluster_name) or ["ng"]
+        max_size = max(self.settings.node_count, 1)
+        min_size = 0 if desired == 0 else desired
+        failed = False
+        for name in names:
+            current = self._desired_node_size(cluster_name, name)
+            if current == desired:
+                continue
+            self.write(f"Scaling nodegroup {name} to {desired}.")
+            updated = self._run(
+                update_nodegroup_scaling_args(
+                    self.settings.aws_region,
+                    cluster_name,
+                    name,
+                    min_size,
+                    max_size,
+                    desired,
+                )
+            )
+            if updated.returncode != 0:
+                self._write_output(updated)
+                failed = True
+                continue
+            waited = self._run(
+                wait_nodegroup_active_args(self.settings.aws_region, cluster_name, name)
+            )
+            if waited.returncode != 0:
+                self._write_output(waited)
+                failed = True
+        return 1 if failed else 0
 
     def _nodegroup_names(self, cluster_name: str) -> list[str]:
         listed = self._run(list_nodegroups_args(self.settings.aws_region, cluster_name))

@@ -227,6 +227,43 @@ def wait_nodegroup_deleted_args(region: str, cluster_name: str, nodegroup_name: 
     ]
 
 
+def describe_nodegroup_desired_size_args(region: str, cluster_name: str, nodegroup_name: str) -> list[str]:
+    return [
+        "aws", "eks", "describe-nodegroup",
+        "--cluster-name", cluster_name,
+        "--nodegroup-name", nodegroup_name,
+        "--region", region,
+        "--query", "nodegroup.scalingConfig.desiredSize",
+        "--output", "text",
+    ]
+
+
+def update_nodegroup_scaling_args(
+    region: str,
+    cluster_name: str,
+    nodegroup_name: str,
+    min_size: int,
+    max_size: int,
+    desired_size: int,
+) -> list[str]:
+    return [
+        "aws", "eks", "update-nodegroup-config",
+        "--cluster-name", cluster_name,
+        "--nodegroup-name", nodegroup_name,
+        "--scaling-config", f"minSize={min_size},maxSize={max_size},desiredSize={desired_size}",
+        "--region", region,
+    ]
+
+
+def wait_nodegroup_active_args(region: str, cluster_name: str, nodegroup_name: str) -> list[str]:
+    return [
+        "aws", "eks", "wait", "nodegroup-active",
+        "--cluster-name", cluster_name,
+        "--nodegroup-name", nodegroup_name,
+        "--region", region,
+    ]
+
+
 def delete_cluster_args(region: str, cluster_name: str) -> list[str]:
     return [
         "aws", "eks", "delete-cluster",

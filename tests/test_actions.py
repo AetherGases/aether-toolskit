@@ -358,6 +358,74 @@ def test_subir_ambiente_creates_only_cluster_when_missing():
     assert all(call[:3] != ("aws", "ecr", "create-repository") for call in runner.calls)
 
 
+def _nodegroup_script(desired: str):
+    def scripted(tup):
+        if tup[:3] == ("aws", "eks", "list-nodegroups"):
+            return CommandResult(tup, 0, "ng\n", "")
+        if tup[:3] == ("aws", "eks", "describe-nodegroup"):
+            return CommandResult(tup, 0, f"{desired}\n", "")
+        return None
+    return scripted
+
+
+def test_scale_environment_to_zero_keeps_cluster():
+    messages = []
+    runner = FakeRunner(scripted_fn=_nodegroup_script("1"))
+    actions = Actions(_settings(), runner, Path("."), messages.append)
+    assert actions.escalar_ambiente_zero("aether-qa") == 0
+    assert any(
+        call[:3] == ("aws", "eks", "update-nodegroup-config")
+        and "desiredSize=0" in " ".join(call)
+        for call in runner.calls
+    )
+    assert any(call[:4] == ("aws", "eks", "wait", "nodegroup-active") for call in runner.calls)
+    assert all(call[:3] != ("aws", "eks", "delete-cluster") for call in runner.calls)
+    assert all(call[:3] != ("aws", "eks", "delete-nodegroup") for call in runner.calls)
+    assert all(call[:3] != ("aws", "cloudformation", "delete-stack") for call in runner.calls)
+
+
+def test_scale_environment_to_zero_scales_all_workloads():
+    runner = FakeRunner(scripted_fn=_nodegroup_script("1"))
+    actions = Actions(_settings(), runner, Path("."), lambda message: None)
+    assert actions.escalar_ambiente_zero("aether-qa") == 0
+    scales = [call for call in runner.calls if call[0] == "kubectl" and "scale" in call]
+    assert any("deployment/kong" in call and "--replicas=0" in call for call in scales)
+    assert any("statefulset/postgres" in call and "--replicas=0" in call for call in scales)
+
+
+def test_scale_workload_to_zero_keeps_cluster():
+    runner = FakeRunner()
+    actions = Actions(_settings(), runner, Path("."), lambda message: None)
+    assert actions.escalar_workload_zero("aether-qa", "postgres") == 0
+    assert any(
+        "scale" in call and "statefulset/postgres" in call and "--replicas=0" in call
+        for call in runner.calls
+    )
+    assert all(call[:3] != ("aws", "eks", "delete-cluster") for call in runner.calls)
+
+
+def test_stopped_environment_refuses_scale_to_zero():
+    messages = []
+    runner = FakeRunner(describe_code=254, describe_stdout="")
+    actions = Actions(_settings(), runner, Path("."), messages.append)
+    assert actions.escalar_ambiente_zero("aether-qa") == 1
+    assert messages == ["Environment is stopped. Start the environment first."]
+    assert all(call[:3] != ("aws", "eks", "update-nodegroup-config") for call in runner.calls)
+
+
+def test_active_start_restores_nodegroup_when_scaled_to_zero():
+    runner = FakeRunner(scripted_fn=_nodegroup_script("0"))
+    actions = Actions(_settings(), runner, Path("."), lambda message: None)
+    assert actions.subir_ambiente("aether-qa") == 0
+    assert any(
+        call[:3] == ("aws", "eks", "update-nodegroup-config")
+        and "desiredSize=1" in " ".join(call)
+        for call in runner.calls
+    )
+    assert all(call[:3] != ("eksctl", "create", "cluster") for call in runner.calls)
+    assert all(call[0] != "kubectl" for call in runner.calls)
+
+
 def test_active_cluster_start_does_not_publish_workloads():
     root = Path(__file__).resolve().parents[1]
     messages = []

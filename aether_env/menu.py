@@ -34,6 +34,8 @@ def next_state(state: MenuState, choice: str) -> MenuState | None:
             return MenuState("confirm-teardown", state.cluster_name)
         if choice == "3":
             return MenuState("workloads", state.cluster_name)
+        if choice == "4":
+            return MenuState("run", state.cluster_name, action="escalar-ambiente-zero")
         if choice == "0":
             return MenuState("root")
         return state
@@ -45,7 +47,7 @@ def next_state(state: MenuState, choice: str) -> MenuState | None:
             return MenuState("action", state.cluster_name, workload.key)
         return state
     if state.screen == "action":
-        actions = {"1": "subir", "2": "derrubar", "3": "update"}
+        actions = {"1": "subir", "2": "derrubar", "3": "update", "4": "escalar-zero"}
         if choice in actions:
             return MenuState("run", state.cluster_name, state.workload_key, actions[choice])
         if choice == "0":
@@ -140,6 +142,7 @@ def render(state: MenuState) -> str:
             _option(theme, "1", "Start environment"),
             _option(theme, "2", "Tear down environment"),
             _option(theme, "3", "Choose workload"),
+            _option(theme, "4", "Scale to zero"),
             _blank(theme),
             _back_line(theme),
         ]
@@ -175,6 +178,7 @@ def render(state: MenuState) -> str:
         _option(theme, "1", "Start"),
         _option(theme, "2", "Tear down"),
         _option(theme, "3", "Update"),
+        _option(theme, "4", "Scale to zero"),
         _blank(theme),
         _back_line(theme),
     ]

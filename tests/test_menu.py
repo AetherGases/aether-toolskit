@@ -27,6 +27,7 @@ def test_qa_environment_is_blue_and_white():
     assert "\033[91m" not in text
     assert "Start environment" in text
     assert "Tear down environment" in text
+    assert "Scale to zero" in text
 
 
 def test_prod_environment_is_red_and_white():
@@ -34,6 +35,8 @@ def test_prod_environment_is_red_and_white():
     assert "\033[91m" in text
     assert "\033[97m" in text
     assert "\033[94m" not in text
+    assert "Scale to zero" in text
+    assert "Tear down environment" in text
 
 
 def test_frame_lines_have_single_border():
@@ -67,7 +70,19 @@ def test_navigation_and_actions():
     assert auth.workload_key == "aether-ms-auth"
     update = next_state(auth, "3")
     assert update.action == "update"
+    scale_env = next_state(qa, "4")
+    assert scale_env == MenuState("run", "aether-qa", action="escalar-ambiente-zero")
+    scale_item = next_state(auth, "4")
+    assert scale_item.action == "escalar-zero"
     assert next_state(MenuState("root"), "0") is None
+
+
+def test_action_menu_keeps_teardown_and_adds_scale_to_zero():
+    text = render(MenuState("action", "aether-qa", "kong"))
+    assert "Start" in text
+    assert "Tear down" in text
+    assert "Update" in text
+    assert "Scale to zero" in text
 
 
 def test_run_menu_asks_phrase_before_teardown():

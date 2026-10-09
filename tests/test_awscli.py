@@ -3,14 +3,29 @@ from aether_env.awscli import (
     cluster_config,
     create_cluster_args,
     delete_ecr_args,
+    describe_nodegroup_desired_size_args,
     ecr_repository,
     image_uri,
     delete_stack_args,
     list_eks_cluster_security_group_ids_args,
     list_eksctl_stack_names_args,
     stack_vpc_physical_id_args,
+    update_nodegroup_scaling_args,
+    wait_nodegroup_active_args,
 )
 from aether_env.config import load_settings
+
+
+def test_nodegroup_scaling_update_and_wait():
+    update = update_nodegroup_scaling_args("sa-east-1", "aether-qa", "ng", 0, 1, 0)
+    assert update[:3] == ["aws", "eks", "update-nodegroup-config"]
+    assert "--scaling-config" in update
+    assert update[update.index("--scaling-config") + 1] == "minSize=0,maxSize=1,desiredSize=0"
+    desired = describe_nodegroup_desired_size_args("sa-east-1", "aether-qa", "ng")
+    assert desired[:3] == ["aws", "eks", "describe-nodegroup"]
+    assert "nodegroup.scalingConfig.desiredSize" in desired[desired.index("--query") + 1]
+    wait = wait_nodegroup_active_args("sa-east-1", "aether-qa", "ng")
+    assert wait[:4] == ["aws", "eks", "wait", "nodegroup-active"]
 
 
 def test_create_cluster_uses_managed_nodegroup():
