@@ -15,10 +15,11 @@ def render_secret(data: Mapping[str, str]) -> str:
         "metadata:",
         "  name: aether-env",
         "  namespace: aether",
+        "type: Opaque",
         "stringData:",
     ]
-    for key, value in data.items():
-        lines.append(f"  {key}: {json.dumps(value, ensure_ascii=False)}")
+    for key, value in sorted(data.items()):
+        lines.append(f"  {key}: {json.dumps(str(value), ensure_ascii=False)}")
     return "\n".join(lines) + "\n"
 
 
@@ -45,6 +46,7 @@ metadata:
   name: {name}
   namespace: aether
 spec:
+  type: ClusterIP
   selector:
     app: {name}
   ports:
@@ -211,14 +213,14 @@ spec:
 
 
 def render_ingress(workloads: Sequence[Workload]) -> str:
-    prefixed = []
-    root = ""
-    for workload in workloads:
-        if workload.ingress_path == "/":
-            root = f"""apiVersion: networking.k8s.io/v1
+    gateway = next((w for w in workloads if w.key == "kong"), None)
+    if gateway is None:
+        return ""
+    port = gateway.container_port or 8000
+    return f"""apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: aether-web
+  name: aether-gateway
   namespace: aether
 spec:
   ingressClassName: nginx
@@ -229,31 +231,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {workload.key}
+                name: {gateway.key}
                 port:
-                  number: {workload.container_port}
+                  number: {port}
 """
-            continue
-        prefixed.append(f"""          - path: {workload.ingress_path}(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: {workload.key}
-                port:
-                  number: {workload.container_port}
-""")
-    apis = """apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: aether-apis
-  namespace: aether
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-spec:
-  ingressClassName: nginx
-  rules:
-    - http:
-        paths:
-""" + "".join(prefixed)
-    return apis + "---\n" + root

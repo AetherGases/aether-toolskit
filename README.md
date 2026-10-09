@@ -15,4 +15,4 @@ pip install -r requirements.txt
 python -m aether_env
 ```
 
-QA uses blue and white and builds from `develop`. Production uses red and white and builds from `main`. Start environment creates the EKS cluster and publishes the applications and databases. Tear down environment deletes the cluster, disks, and ECR repositories. QA asks for `yes`. Production asks for `aether-prod`.
+QA uses blue and white and builds from `develop`. Production uses red and white and builds from `main`. Start environment creates the EKS cluster and managed node group. Tear down environment deletes the node groups, the cluster, and the `eksctl-*` CloudFormation stacks. Workloads are started, stopped, and updated from Choose workload. QA asks for `yes`. Production asks for `aether-prod`.

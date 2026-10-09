@@ -8,11 +8,12 @@ class Theme:
     branch: str
     accent: str
     text: str
+    dim: str
     reset: str
 
 
-QA = Theme("aether-qa", "qa", "develop", "\033[94m", "\033[97m", "\033[0m")
-PROD = Theme("aether-prod", "prod", "main", "\033[91m", "\033[97m", "\033[0m")
+QA = Theme("aether-qa", "qa", "develop", "\033[94m", "\033[97m", "\033[2m", "\033[0m")
+PROD = Theme("aether-prod", "prod", "main", "\033[91m", "\033[97m", "\033[2m", "\033[0m")
 
 
 def theme_for(cluster_name: str) -> Theme:

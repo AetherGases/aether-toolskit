@@ -5,6 +5,10 @@ from aether_env.awscli import (
     delete_ecr_args,
     ecr_repository,
     image_uri,
+    delete_stack_args,
+    list_eks_cluster_security_group_ids_args,
+    list_eksctl_stack_names_args,
+    stack_vpc_physical_id_args,
 )
 from aether_env.config import load_settings
 
@@ -30,6 +34,27 @@ def test_cluster_config_uses_roles_from_the_environment():
     assert args == ["eksctl", "create", "cluster", "--config-file", "cluster.yaml"]
     assert "serviceRoleARN: arn:aws:iam::123:role/cluster" in text
     assert "instanceRoleARN: arn:aws:iam::123:role/node" in text
+
+
+def test_stack_vpc_and_eks_security_group_queries():
+    vpc = stack_vpc_physical_id_args("us-east-1", "eksctl-aether-qa-cluster")
+    assert "LogicalResourceId=='VPC'" in vpc[vpc.index("--query") + 1]
+    groups = list_eks_cluster_security_group_ids_args("us-east-1", "vpc-123", "aether-qa")
+    assert "eks-cluster-sg-aether-qa-" in groups[groups.index("--query") + 1]
+
+
+def test_delete_stack_can_retain_blocked_resources():
+    args = delete_stack_args("us-east-1", "eksctl-aether-qa-cluster", ["LatticeService", "LatticeTarget"])
+    assert args.count("--retain-resources") == 2
+    assert "LatticeService" in args
+    assert "LatticeTarget" in args
+
+
+def test_list_eksctl_stack_names_filters_by_cluster_prefix():
+    args = list_eksctl_stack_names_args("us-east-1", "aether-qa")
+    assert "list-stacks" in args
+    query = args[args.index("--query") + 1]
+    assert "eksctl-aether-qa" in query
 
 
 def test_ecr_names_and_env_do_not_keep_a_stale_session_token():

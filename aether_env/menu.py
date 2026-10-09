@@ -3,7 +3,10 @@ from dataclasses import dataclass
 
 from aether_env.catalog import WORKLOADS
 from aether_env.confirm import required_phrase
-from aether_env.theme import PROD, QA, theme_for
+from aether_env.theme import PROD, QA, Theme, theme_for
+
+_FRAME_WIDTH = 50
+_INNER_WIDTH = _FRAME_WIDTH - 2
 
 
 @dataclass(frozen=True)
@@ -51,61 +54,131 @@ def next_state(state: MenuState, choice: str) -> MenuState | None:
     return state
 
 
-def _back_line(theme) -> str:
-    return f"{theme.accent}0{theme.reset} {theme.text}Back{theme.reset}"
+def _pad_visible(text: str, width: int) -> str:
+    visible = 0
+    index = 0
+    while index < len(text):
+        if text[index] == "\033":
+            end = text.find("m", index)
+            if end == -1:
+                break
+            index = end + 1
+            continue
+        visible += 1
+        index += 1
+    if visible >= width:
+        return text
+    return text + (" " * (width - visible))
 
 
-def _phrase_line(theme) -> str:
+def _frame(theme: Theme, title: str, body_lines: list[str]) -> str:
+    rule = "─" * _INNER_WIDTH
+    top = f"{theme.accent}╭{rule}╮{theme.reset}"
+    bottom = f"{theme.accent}╰{rule}╯{theme.reset}"
+
+    def frame_line(content: str) -> str:
+        padded = _pad_visible(content, _INNER_WIDTH)
+        return f"{theme.accent}│{theme.reset}{padded}{theme.accent}│{theme.reset}"
+
+    title_line = frame_line(f" {title} ")
+    content_lines = [frame_line(line) for line in body_lines]
+    return "\n".join([top, title_line, *content_lines, bottom])
+
+
+def _line(content: str) -> str:
+    return _pad_visible(content, _INNER_WIDTH)
+
+
+def _blank(_theme: Theme) -> str:
+    return _line("")
+
+
+def _option(theme: Theme, number: str, label: str) -> str:
+    content = f"  {theme.accent}{number}{theme.reset}  {theme.text}{label}{theme.reset}"
+    return _line(content)
+
+
+def _section(theme: Theme, label: str) -> str:
+    content = f"  {theme.dim}{label}{theme.reset}"
+    return _line(content)
+
+
+def _back_line(theme: Theme) -> str:
+    return _option(theme, "0", "Back")
+
+
+def _phrase_line(theme: Theme) -> str:
     phrase = required_phrase(theme.cluster_name)
     if phrase == theme.cluster_name:
         phrase_colored = f"{theme.accent}{phrase}{theme.reset}"
     else:
         phrase_colored = f"{theme.text}{phrase}{theme.reset}"
-    return f"{theme.text}Type {phrase_colored}{theme.reset}"
+    content = f"  {theme.text}Type {phrase_colored}{theme.reset}"
+    return _line(content)
+
+
+def _root_option(number: str, label: str, accent: str, text: str, reset: str) -> str:
+    content = f"  {accent}{number}{reset}  {accent}{label}{reset}"
+    return _line(content)
 
 
 def render(state: MenuState) -> str:
     if state.screen == "root":
-        return "\n".join([
-            f"{QA.text}Aether{QA.reset}",
-            f"{QA.accent}1{QA.reset} {QA.accent}QA{QA.reset}",
-            f"{PROD.accent}2{PROD.reset} {PROD.accent}Production{PROD.reset}",
-            f"{QA.text}0 Exit{QA.reset}",
-            "",
-        ])
+        body = [
+            _blank(QA),
+            _root_option("1", "QA", QA.accent, QA.text, QA.reset),
+            _root_option("2", "Production", PROD.accent, PROD.text, PROD.reset),
+            _blank(QA),
+            _root_option("0", "Exit", QA.text, QA.text, QA.reset),
+        ]
+        return "\n".join([_frame(QA, "Aether", body), ""])
+
     theme = theme_for(state.cluster_name or "")
     if state.screen == "environment":
-        lines = [
-            f"{theme.accent}{theme.cluster_name}{theme.reset}",
-            f"{theme.accent}1{theme.reset} {theme.text}Start environment{theme.reset}",
-            f"{theme.accent}2{theme.reset} {theme.text}Tear down environment{theme.reset}",
-            f"{theme.accent}3{theme.reset} {theme.text}Choose workload{theme.reset}",
+        body = [
+            _blank(theme),
+            _option(theme, "1", "Start environment"),
+            _option(theme, "2", "Tear down environment"),
+            _option(theme, "3", "Choose workload"),
+            _blank(theme),
             _back_line(theme),
         ]
-    elif state.screen == "workloads":
-        lines = [f"{theme.accent}Workloads{theme.reset}"]
+        return "\n".join([_frame(theme, theme.cluster_name, body), ""])
+    if state.screen == "workloads":
+        app_lines = []
+        db_lines = []
         for index, workload in enumerate(WORKLOADS, start=1):
-            lines.append(
-                f"{theme.accent}{index}{theme.reset} {theme.accent}{workload.title}{theme.reset}"
-            )
-        lines.append(_back_line(theme))
-    elif state.screen == "confirm-teardown":
-        lines = [
-            (
-                f"{theme.accent}Tear down {theme.accent}{theme.cluster_name}{theme.reset}"
-                f"{theme.text} deletes the cluster, disks, and data.{theme.reset}"
-            ),
+            line = _option(theme, str(index), workload.title)
+            if workload.kind == "database":
+                db_lines.append(line)
+            else:
+                app_lines.append(line)
+        body = [_blank(theme), _section(theme, "Applications"), *app_lines]
+        if db_lines:
+            body.extend([_blank(theme), _section(theme, "Databases"), *db_lines])
+        body.extend([_blank(theme), _back_line(theme)])
+        return "\n".join([_frame(theme, "Workloads", body), ""])
+    if state.screen == "confirm-teardown":
+        warning = (
+            f"  {theme.text}This deletes {theme.accent}{theme.cluster_name}{theme.reset}"
+            f"{theme.text}, disks, and data.{theme.reset}"
+        )
+        body = [
+            _blank(theme),
+            _line(warning),
+            _blank(theme),
             _phrase_line(theme),
         ]
-    else:
-        lines = [
-            f"{theme.accent}{state.workload_key}{theme.reset}",
-            f"{theme.accent}1{theme.reset} {theme.text}Start{theme.reset}",
-            f"{theme.accent}2{theme.reset} {theme.text}Tear down{theme.reset}",
-            f"{theme.accent}3{theme.reset} {theme.text}Update{theme.reset}",
-            _back_line(theme),
-        ]
-    return "\n".join(lines) + "\n"
+        return "\n".join([_frame(theme, "Tear down", body), ""])
+    body = [
+        _blank(theme),
+        _option(theme, "1", "Start"),
+        _option(theme, "2", "Tear down"),
+        _option(theme, "3", "Update"),
+        _blank(theme),
+        _back_line(theme),
+    ]
+    return "\n".join([_frame(theme, state.workload_key or "", body), ""])
 
 
 def run_menu(read_line: Callable[[], str], write: Callable[[str], None], on_run: Callable[[MenuState], int], on_confirm: Callable[[str, str], int]) -> int:

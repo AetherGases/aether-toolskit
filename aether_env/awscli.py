@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from aether_env.config import Settings
 
@@ -73,6 +73,48 @@ def describe_stack_args(region: str, stack_name: str) -> list[str]:
     ]
 
 
+def list_eksctl_stack_names_args(region: str, cluster_name: str) -> list[str]:
+    prefix = f"eksctl-{cluster_name}"
+    return [
+        "aws", "cloudformation", "list-stacks",
+        "--region", region,
+        "--stack-status-filter",
+        "CREATE_IN_PROGRESS",
+        "CREATE_FAILED",
+        "CREATE_COMPLETE",
+        "ROLLBACK_IN_PROGRESS",
+        "ROLLBACK_FAILED",
+        "ROLLBACK_COMPLETE",
+        "DELETE_IN_PROGRESS",
+        "DELETE_FAILED",
+        "UPDATE_IN_PROGRESS",
+        "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS",
+        "UPDATE_COMPLETE",
+        "UPDATE_ROLLBACK_IN_PROGRESS",
+        "UPDATE_ROLLBACK_FAILED",
+        "UPDATE_ROLLBACK_COMPLETE",
+        "REVIEW_IN_PROGRESS",
+        "IMPORT_IN_PROGRESS",
+        "IMPORT_COMPLETE",
+        "IMPORT_ROLLBACK_IN_PROGRESS",
+        "IMPORT_ROLLBACK_FAILED",
+        "IMPORT_ROLLBACK_COMPLETE",
+        "--query", f"StackSummaries[?starts_with(StackName, '{prefix}')].StackName",
+        "--output", "text",
+    ]
+
+
+def describe_stack_events_args(region: str, stack_name: str) -> list[str]:
+    return [
+        "aws", "cloudformation", "describe-stack-events",
+        "--stack-name", stack_name,
+        "--region", region,
+        "--max-items", "5",
+        "--query", "StackEvents[?ResourceStatusReason!=null].[LogicalResourceId,ResourceStatus,ResourceStatusReason]",
+        "--output", "text",
+    ]
+
+
 def disable_stack_protection_args(region: str, stack_name: str) -> list[str]:
     return [
         "aws", "cloudformation", "update-termination-protection",
@@ -82,8 +124,71 @@ def disable_stack_protection_args(region: str, stack_name: str) -> list[str]:
     ]
 
 
-def delete_stack_args(region: str, stack_name: str) -> list[str]:
-    return ["aws", "cloudformation", "delete-stack", "--stack-name", stack_name, "--region", region]
+def list_vpc_lattice_resource_ids_args(region: str, stack_name: str) -> list[str]:
+    return [
+        "aws", "cloudformation", "list-stack-resources",
+        "--stack-name", stack_name,
+        "--region", region,
+        "--query", "StackResourceSummaries[?contains(ResourceType, 'VpcLattice')].LogicalResourceId",
+        "--output", "text",
+    ]
+
+
+def list_delete_failed_resource_ids_args(region: str, stack_name: str) -> list[str]:
+    return [
+        "aws", "cloudformation", "list-stack-resources",
+        "--stack-name", stack_name,
+        "--region", region,
+        "--query", "StackResourceSummaries[?ResourceStatus=='DELETE_FAILED'].LogicalResourceId",
+        "--output", "text",
+    ]
+
+
+def delete_stack_args(
+    region: str,
+    stack_name: str,
+    retain_resources: Sequence[str] = (),
+) -> list[str]:
+    command = ["aws", "cloudformation", "delete-stack", "--stack-name", stack_name, "--region", region]
+    for logical_id in retain_resources:
+        command.extend(["--retain-resources", logical_id])
+    return command
+
+
+def stack_vpc_physical_id_args(region: str, stack_name: str) -> list[str]:
+    return [
+        "aws", "cloudformation", "list-stack-resources",
+        "--stack-name", stack_name,
+        "--region", region,
+        "--query", "StackResourceSummaries[?LogicalResourceId=='VPC'].PhysicalResourceId",
+        "--output", "text",
+    ]
+
+
+def list_eks_cluster_security_group_ids_args(region: str, vpc_id: str, cluster_name: str) -> list[str]:
+    prefix = f"eks-cluster-sg-{cluster_name}-"
+    return [
+        "aws", "ec2", "describe-security-groups",
+        "--region", region,
+        "--filters", f"Name=vpc-id,Values={vpc_id}",
+        "--query", f"SecurityGroups[?starts_with(GroupName, '{prefix}')].GroupId",
+        "--output", "text",
+    ]
+
+
+def list_eks_cluster_security_group_ids_by_name_args(region: str, cluster_name: str) -> list[str]:
+    prefix = f"eks-cluster-sg-{cluster_name}-"
+    return [
+        "aws", "ec2", "describe-security-groups",
+        "--region", region,
+        "--filters", f"Name=group-name,Values={prefix}*",
+        "--query", "SecurityGroups[].GroupId",
+        "--output", "text",
+    ]
+
+
+def delete_security_group_args(region: str, group_id: str) -> list[str]:
+    return ["aws", "ec2", "delete-security-group", "--group-id", group_id, "--region", region]
 
 
 def wait_stack_delete_args(region: str, stack_name: str) -> list[str]:

@@ -1,4 +1,6 @@
+import threading
 from pathlib import Path
+from unittest.mock import patch
 
 from aether_env.actions import Actions
 from aether_env.config import load_settings
@@ -19,10 +21,12 @@ class FakeRunner:
         self.describe_stdout = describe_stdout
         self.hostname = hostname
         self.scripted_fn = scripted_fn
+        self._lock = threading.Lock()
 
     def run(self, args, *, env=None, cwd=None, stdin=None, stream=False):
         tup = tuple(args)
-        self.calls.append(tup)
+        with self._lock:
+            self.calls.append(tup)
         if self.scripted_fn is not None:
             override = self.scripted_fn(tup)
             if override is not None:
@@ -75,12 +79,11 @@ def test_teardown_deletes_nodegroup_before_cluster():
     nodegroup_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ("aws", "eks", "delete-nodegroup"))
     cluster_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ("aws", "eks", "delete-cluster"))
     assert nodegroup_at < cluster_at
+    stack_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ("aws", "cloudformation", "delete-stack"))
+    assert cluster_at < stack_at
+    assert any("eksctl-aether-qa-cluster" in call for call in runner.calls if call[:3] == ("aws", "cloudformation", "delete-stack"))
     assert all(call[:2] != ("eksctl", "delete") for call in runner.calls)
-    assert any(
-        call[:3] == ("aws", "cloudformation", "delete-stack")
-        and any("nodegroup-ng" in part for part in call)
-        for call in runner.calls
-    )
+    assert all(call[:3] != ("aws", "ecr", "delete-repository") for call in runner.calls)
 
 
 def test_teardown_still_deletes_when_describe_is_denied():
@@ -100,6 +103,28 @@ def test_teardown_still_deletes_when_describe_is_denied():
     assert "Cluster was already absent." not in joined
     assert any(call[:3] == ("aws", "eks", "delete-nodegroup") for call in runner.calls)
     assert any(call[:3] == ("aws", "eks", "delete-cluster") for call in runner.calls)
+
+
+def test_teardown_deletes_leftover_stacks_when_cluster_already_absent():
+    root = Path(__file__).resolve().parents[1]
+    messages = []
+
+    def absent_cluster_with_stack(tup):
+        if tup[:3] == ("aws", "eks", "describe-cluster"):
+            return CommandResult(tup, 254, "", "ResourceNotFoundException")
+        if tup[:3] == ("aws", "cloudformation", "describe-stacks"):
+            return CommandResult(tup, 0, "CREATE_COMPLETE\n", "")
+        return None
+
+    runner = FakeRunner(describe_code=254, describe_stdout="", scripted_fn=absent_cluster_with_stack)
+    actions = Actions(_settings(), runner, root, messages.append)
+    assert actions.derrubar_ambiente("aether-qa", "yes") == 0
+    assert "Cluster was already absent." in messages
+    assert any(
+        call[:3] == ("aws", "cloudformation", "delete-stack") and "eksctl-aether-qa-cluster" in call
+        for call in runner.calls
+    )
+    assert all(call[:3] != ("aws", "ecr", "delete-repository") for call in runner.calls)
 
 
 def test_wrong_phrase_does_not_delete():
@@ -127,6 +152,90 @@ def test_database_update_restarts_and_skips_docker():
     assert all(not item.startswith("docker build") for item in flat)
 
 
+def test_active_cluster_skips_eksctl_create_even_with_stack():
+    root = Path(__file__).resolve().parents[1]
+
+    def scripted(tup):
+        if tup[:3] == ("aws", "eks", "describe-cluster"):
+            return CommandResult(tup, 0, "ACTIVE\n", "")
+        if tup[:3] == ("aws", "cloudformation", "describe-stacks"):
+            return CommandResult(tup, 0, "CREATE_COMPLETE\n", "")
+        return None
+
+    runner = FakeRunner(scripted_fn=scripted)
+    actions = Actions(_settings(), runner, root, lambda message: None)
+    assert actions._bootstrap_cluster("aether-qa") == 0
+    assert all(call[:3] != ("eksctl", "create", "cluster") for call in runner.calls)
+
+
+def test_reconcile_reuses_healthy_stack_and_creates_cluster():
+    root = Path(__file__).resolve().parents[1]
+
+    def scripted(tup):
+        if tup[:3] == ("aws", "eks", "describe-cluster"):
+            return CommandResult(tup, 254, "", "ResourceNotFoundException")
+        if tup[:3] == ("aws", "cloudformation", "describe-stacks"):
+            return CommandResult(tup, 0, "CREATE_COMPLETE\n", "")
+        return None
+
+    messages = []
+    runner = FakeRunner(scripted_fn=scripted)
+    actions = Actions(_settings(), runner, root, messages.append)
+    with patch.object(Actions, "_wait_cluster_active", return_value=True):
+        assert actions._bootstrap_cluster("aether-qa") == 0
+    assert any(call[:3] == ("eksctl", "create", "cluster") for call in runner.calls)
+    assert all(call[:3] != ("aws", "cloudformation", "delete-stack") for call in runner.calls)
+    assert any("Reusing the existing infrastructure stack" in message for message in messages)
+
+
+def test_delete_failed_stack_is_repaired_before_create():
+    root = Path(__file__).resolve().parents[1]
+    stack_deleted = {"value": False}
+
+    def scripted(tup):
+        if tup[:3] == ("aws", "eks", "describe-cluster"):
+            return CommandResult(tup, 254, "", "ResourceNotFoundException")
+        if tup[:3] == ("aws", "cloudformation", "delete-stack"):
+            stack_deleted["value"] = True
+            return CommandResult(tup, 0, "", "")
+        if tup[:3] == ("aws", "cloudformation", "describe-stacks"):
+            if stack_deleted["value"]:
+                return CommandResult(tup, 254, "", "does not exist")
+            return CommandResult(tup, 0, "DELETE_FAILED\n", "")
+        return None
+
+    messages = []
+    runner = FakeRunner(scripted_fn=scripted)
+    actions = Actions(_settings(), runner, root, messages.append)
+    with patch.object(Actions, "_wait_stack_absent", return_value=True), patch.object(
+        Actions, "_wait_cluster_active", return_value=True
+    ):
+        assert actions._bootstrap_cluster("aether-qa") == 0
+    assert any(call[:3] == ("eksctl", "create", "cluster") for call in runner.calls)
+    assert any(call[:3] == ("aws", "cloudformation", "delete-stack") for call in runner.calls)
+    assert any("Repairing blocked stack deletion" in message for message in messages)
+
+
+def test_start_does_not_wait_on_cloudformation_stack_delete():
+    root = Path(__file__).resolve().parents[1]
+
+    def deleting_stack(tup):
+        if tup[:3] == ("aws", "cloudformation", "describe-stacks"):
+            return CommandResult(tup, 0, "DELETE_IN_PROGRESS\n", "")
+        return None
+
+    messages = []
+    runner = FakeRunner(describe_code=254, describe_stdout="", scripted_fn=deleting_stack)
+    actions = Actions(_settings(), runner, root, messages.append)
+    with patch.object(Actions, "_wait_stack_absent", return_value=True), patch.object(
+        Actions, "_wait_cluster_active", return_value=True
+    ):
+        actions.subir_ambiente("aether-qa")
+    assert all(call[:4] != ("aws", "cloudformation", "wait", "stack-delete-complete") for call in runner.calls)
+    assert any("Reconciling" in message for message in messages)
+    assert any(call[:3] == ("eksctl", "create", "cluster") for call in runner.calls)
+
+
 def test_failed_stack_is_removed_before_create():
     root = Path(__file__).resolve().parents[1]
 
@@ -138,119 +247,164 @@ def test_failed_stack_is_removed_before_create():
     messages = []
     runner = FakeRunner(describe_code=254, describe_stdout="", scripted_fn=failed_stack)
     actions = Actions(_settings(), runner, root, messages.append)
-    actions.subir_ambiente("aether-qa")
+    with patch.object(Actions, "_wait_stack_absent", return_value=True), patch.object(
+        Actions, "_wait_cluster_active", return_value=True
+    ):
+        actions.subir_ambiente("aether-qa")
     assert any(call[:4] == ("aws", "cloudformation", "delete-stack", "--stack-name") for call in runner.calls)
-    assert any("Removing failed stack eksctl-aether-qa-cluster." == message for message in messages)
+    assert any("Removing stack eksctl-aether-qa-cluster." == message for message in messages)
     create_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ("eksctl", "create", "cluster"))
     delete_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ("aws", "cloudformation", "delete-stack"))
     assert delete_at < create_at
+
+
+def test_stack_cleanup_deletes_orphaned_eks_security_group():
+    root = Path(__file__).resolve().parents[1]
+
+    def orphan_sg(tup):
+        if tup[:3] == ("aws", "cloudformation", "describe-stacks"):
+            return CommandResult(tup, 0, "DELETE_FAILED\n", "")
+        if tup[:3] == ("aws", "cloudformation", "list-stack-resources"):
+            if tup[-1].endswith("text") and "VPC" in tup[tup.index("--query") + 1]:
+                return CommandResult(tup, 0, "vpc-abc\n", "")
+            return CommandResult(tup, 0, "", "")
+        if tup[:3] == ("aws", "ec2", "describe-security-groups"):
+            return CommandResult(tup, 0, "sg-orphan\n", "")
+        return None
+
+    messages = []
+    runner = FakeRunner(describe_code=254, describe_stdout="", scripted_fn=orphan_sg)
+    actions = Actions(_settings(), runner, root, messages.append)
+    with patch.object(Actions, "_wait_stack_absent", return_value=True), patch.object(
+        Actions, "_wait_cluster_active", return_value=True
+    ):
+        actions.subir_ambiente("aether-qa")
+    assert any("Removing orphaned EKS security group sg-orphan." in message for message in messages)
+    assert any(call[:3] == ("aws", "ec2", "delete-security-group") for call in runner.calls)
+
+
+def test_delete_failed_stack_retains_vpc_lattice_resources():
+    root = Path(__file__).resolve().parents[1]
+
+    def lattice_stack(tup):
+        if tup[:3] == ("aws", "cloudformation", "describe-stacks"):
+            return CommandResult(tup, 0, "DELETE_FAILED\n", "")
+        if tup[:3] == ("aws", "cloudformation", "list-stack-resources") and any(
+            "VpcLattice" in part for part in tup
+        ):
+            return CommandResult(tup, 0, "ServiceNetwork\n", "")
+        return None
+
+    messages = []
+    runner = FakeRunner(describe_code=254, describe_stdout="", scripted_fn=lattice_stack)
+    actions = Actions(_settings(), runner, root, messages.append)
+    with patch.object(Actions, "_wait_stack_absent", return_value=True), patch.object(
+        Actions, "_wait_cluster_active", return_value=True
+    ):
+        actions.subir_ambiente("aether-qa")
+    joined = "\n".join(messages)
+    assert "cannot delete VPC Lattice" in joined
+    retain_calls = [
+        call for call in runner.calls
+        if call[:3] == ("aws", "cloudformation", "delete-stack")
+        and "--retain-resources" in call
+        and "ServiceNetwork" in call
+    ]
+    assert retain_calls
+
+
+def test_delete_failed_stack_is_retried_before_create():
+    root = Path(__file__).resolve().parents[1]
+
+    def delete_failed_stack(tup):
+        if tup[:3] == ("aws", "cloudformation", "describe-stacks"):
+            return CommandResult(tup, 0, "DELETE_FAILED\n", "")
+        return None
+
+    messages = []
+    runner = FakeRunner(describe_code=254, describe_stdout="", scripted_fn=delete_failed_stack)
+    actions = Actions(_settings(), runner, root, messages.append)
+    with patch.object(Actions, "_wait_stack_absent", return_value=True), patch.object(
+        Actions, "_wait_cluster_active", return_value=True
+    ):
+        actions.subir_ambiente("aether-qa")
+    assert any("Retrying cleanup of stuck stack eksctl-aether-qa-cluster." in message for message in messages)
+    assert any(call[:4] == ("aws", "cloudformation", "delete-stack", "--stack-name") for call in runner.calls)
 
 
 def test_missing_cluster_starts_eksctl():
     root = Path(__file__).resolve().parents[1]
     runner = FakeRunner(describe_code=254, describe_stdout="")
     actions = Actions(_settings(), runner, root, lambda message: None)
-    actions.subir_ambiente("aether-qa")
+    with patch.object(Actions, "_wait_stack_absent", return_value=True), patch.object(
+        Actions, "_wait_cluster_active", return_value=True
+    ):
+        actions.subir_ambiente("aether-qa")
     assert any(call[:3] == ("eksctl", "create", "cluster") for call in runner.calls)
 
 
-def _kubectl_apply_stdin(tup):
-    return tup[0] == "kubectl" and tup[-2:] == ("-f", "-")
-
-
-def test_failed_kubectl_apply_stops_subir_ambiente():
+def test_subir_ambiente_creates_only_cluster_when_missing():
     root = Path(__file__).resolve().parents[1]
-
-    def fail_namespace_apply(tup):
-        if _kubectl_apply_stdin(tup):
-            return CommandResult(tup, 1, "bad namespace", "apply error")
-        return None
-
-    runner = FakeRunner(scripted_fn=fail_namespace_apply)
+    runner = FakeRunner(describe_code=254, describe_stdout="")
     actions = Actions(_settings(), runner, root, lambda message: None)
-    assert actions.subir_ambiente("aether-qa") == 1
-    assert all(call[:3] != ("eksctl", "delete", "cluster") for call in runner.calls)
-
-
-def test_failed_ingress_nginx_apply_stops_subir_ambiente():
-    root = Path(__file__).resolve().parents[1]
-
-    def fail_ingress_nginx_apply(tup):
-        if tup[0] == "kubectl" and tup[-1] == INGRESS_NGINX_URL:
-            return CommandResult(tup, 1, "nginx stdout", "nginx stderr")
-        return None
-
-    messages = []
-    runner = FakeRunner(scripted_fn=fail_ingress_nginx_apply)
-    actions = Actions(_settings(), runner, root, messages.append)
-    assert actions.subir_ambiente("aether-qa") == 1
-    assert "nginx stdout" in messages
-    assert "nginx stderr" in messages
-    web_flow_builds = [
-        call for call in runner.calls
-        if call[:2] == ("docker", "build") and any("aether-web-flow" in part for part in call)
-    ]
-    assert not web_flow_builds
-    assert all(call[:3] != ("eksctl", "delete", "cluster") for call in runner.calls)
-
-
-def test_failed_secret_apply_does_not_print_secret():
-    root = Path(__file__).resolve().parents[1]
-    applies = {"n": 0}
-
-    def fail_secret_apply(tup):
-        if _kubectl_apply_stdin(tup):
-            applies["n"] += 1
-            if applies["n"] == 2:
-                return CommandResult(
-                    tup,
-                    1,
-                    'stringData:\n  POSTGRES_PASSWORD: "pw"\n  JWT_SECRET: "jwt"',
-                    "apply error",
-                )
-        return None
-
-    messages = []
-    runner = FakeRunner(scripted_fn=fail_secret_apply)
-    actions = Actions(_settings(), runner, root, messages.append)
-    assert actions.subir_ambiente("aether-qa") == 1
-    joined = "\n".join(messages)
-    assert "pw" not in joined
-    assert "jwt" not in joined
-    assert "POSTGRES_PASSWORD" not in joined
-    assert "Failed to apply Secret aether-env." in messages
-    assert all(call[:3] != ("eksctl", "delete", "cluster") for call in runner.calls)
-
-
-def test_failed_rev_parse_skips_image_push():
-    root = Path(__file__).resolve().parents[1]
-
-    def fail_rev_parse(tup):
-        if "rev-parse" in tup:
-            return CommandResult(tup, 1, "", "fatal: not a git repository")
-        return None
-
-    runner = FakeRunner(scripted_fn=fail_rev_parse)
-    actions = Actions(_settings(), runner, root, lambda message: None)
-    assert actions.subir_ambiente("aether-qa") == 1
+    with patch.object(Actions, "_wait_cluster_active", return_value=True):
+        assert actions.subir_ambiente("aether-qa") == 0
+    assert any(call[:3] == ("eksctl", "create", "cluster") for call in runner.calls)
     assert all(call[:2] != ("docker", "build") for call in runner.calls)
     assert all(call[:2] != ("docker", "push") for call in runner.calls)
-    assert all(call[:3] != ("eksctl", "delete", "cluster") for call in runner.calls)
+    assert all(call[0] != "kubectl" for call in runner.calls)
+    assert all(call[:3] != ("aws", "eks", "update-kubeconfig") for call in runner.calls)
+    assert all(call[:3] != ("aws", "ecr", "get-login-password") for call in runner.calls)
+    assert all(call[:3] != ("aws", "ecr", "create-repository") for call in runner.calls)
 
 
-def test_failed_ecr_delete_returns_error(tmp_path):
+def test_active_cluster_start_does_not_publish_workloads():
+    root = Path(__file__).resolve().parents[1]
+    messages = []
+    runner = FakeRunner()
+    actions = Actions(_settings(), runner, root, messages.append)
+    assert actions.subir_ambiente("aether-qa") == 0
+    assert "Cluster already exists." in messages
+    assert "Publishing workloads." not in "\n".join(messages)
+    assert all(call[:3] != ("eksctl", "create", "cluster") for call in runner.calls)
+    assert all(call[:2] != ("docker", "build") for call in runner.calls)
+    assert all(call[0] != "kubectl" for call in runner.calls)
+
+
+def test_teardown_does_not_delete_ecr_or_kubeconfig(tmp_path):
     kubeconfig = tmp_path / ".kube" / "aether-qa"
     kubeconfig.parent.mkdir(parents=True)
     kubeconfig.write_text("config", encoding="utf-8")
 
-    def fail_ecr_delete(tup):
-        if tup[:3] == ("aws", "ecr", "delete-repository"):
-            return CommandResult(tup, 1, "ecr stdout", "ecr stderr")
+    def listed_nodegroup(tup):
+        if tup[:3] == ("aws", "eks", "list-nodegroups"):
+            return CommandResult(tup, 0, "ng\n", "")
         return None
 
+    runner = FakeRunner(scripted_fn=listed_nodegroup)
+    actions = Actions(_settings(), runner, tmp_path, lambda message: None)
+    assert actions.derrubar_ambiente("aether-qa", "yes") == 0
+    assert kubeconfig.exists()
+    assert all(call[:3] != ("aws", "ecr", "delete-repository") for call in runner.calls)
+    assert any(call[:3] == ("aws", "eks", "delete-nodegroup") for call in runner.calls)
+    assert any(call[:3] == ("aws", "eks", "delete-cluster") for call in runner.calls)
+
+
+def test_subir_workload_prepares_kubeconfig_namespace_and_secret():
+    root = Path(__file__).resolve().parents[1]
+    runner = FakeRunner()
+    actions = Actions(_settings(), runner, root, lambda message: None)
+    assert actions.subir_workload("aether-qa", "postgres") == 0
+    assert any(call[:3] == ("aws", "eks", "update-kubeconfig") for call in runner.calls)
+    assert any(call[0] == "kubectl" and call[-2:] == ("-f", "-") for call in runner.calls)
+    assert any("scale" in call and "statefulset/postgres" in call for call in runner.calls)
+
+
+def test_subir_workload_kong_installs_ingress_and_prints_url():
+    root = Path(__file__).resolve().parents[1]
     messages = []
-    runner = FakeRunner(scripted_fn=fail_ecr_delete)
-    actions = Actions(_settings(), runner, tmp_path, messages.append)
-    assert actions.derrubar_ambiente("aether-qa", "yes") == 1
-    assert not kubeconfig.exists()
-    assert any("Failed to delete" in message for message in messages)
+    runner = FakeRunner(hostname="lb.example.com")
+    actions = Actions(_settings(), runner, root, messages.append)
+    assert actions.subir_workload("aether-qa", "kong") == 0
+    assert any(INGRESS_NGINX_URL in call for call in runner.calls)
+    assert "URL externa (aether-qa): http://lb.example.com" in messages

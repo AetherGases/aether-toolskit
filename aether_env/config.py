@@ -1,5 +1,7 @@
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import quote
 
 
@@ -29,11 +31,18 @@ EXCLUDED_FROM_SECRET = frozenset({
     "EKS_NODE_ROLE_ARN",
 })
 
+SECRET_KEY_RE = re.compile(r"^[-._a-zA-Z0-9]{1,253}$")
+MAX_SECRET_BYTES = 1024 * 1024
+
 
 class ConfigError(Exception):
     def __init__(self, missing: tuple[str, ...]) -> None:
         super().__init__(", ".join(missing))
         self.missing = missing
+
+
+class SecretConfigError(Exception):
+    pass
 
 
 @dataclass(frozen=True)
@@ -49,7 +58,38 @@ class Settings:
     values: Mapping[str, str]
 
 
-def load_settings(env: Mapping[str, str]) -> Settings:
+def _parse_dotenv_value(raw: str) -> str:
+    raw = raw.strip()
+    if not raw:
+        return raw
+    if raw[0] not in "'\"":
+        return raw
+    quote = raw[0]
+    if len(raw) < 2 or raw[-1] != quote:
+        return raw
+    inner = raw[1:-1]
+    if quote == "'":
+        return inner.replace("\\'", "'")
+    return inner.replace('\\"', '"')
+
+
+def read_dotenv(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    data: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        data[key] = _parse_dotenv_value(value)
+    return data
+
+
+def load_settings(env: Mapping[str, str], *, app_env: Mapping[str, str] | None = None) -> Settings:
     missing = tuple(key for key in REQUIRED if not env.get(key, "").strip())
     if missing:
         raise ConfigError(missing)
@@ -57,6 +97,7 @@ def load_settings(env: Mapping[str, str]) -> Settings:
     if not raw_count.isdigit() or int(raw_count) < 1:
         raise ConfigError(("EKS_NODE_COUNT",))
     token = env.get("AWS_SESSION_TOKEN", "").strip() or None
+    secret_source = app_env if app_env is not None else env
     return Settings(
         aws_access_key_id=env["AWS_ACCESS_KEY_ID"].strip(),
         aws_secret_access_key=env["AWS_SECRET_ACCESS_KEY"].strip(),
@@ -66,16 +107,29 @@ def load_settings(env: Mapping[str, str]) -> Settings:
         node_count=int(raw_count),
         cluster_role_arn=env.get("EKS_CLUSTER_ROLE_ARN", "").strip() or None,
         node_role_arn=env.get("EKS_NODE_ROLE_ARN", "").strip() or None,
-        values={key: value for key, value in env.items()},
+        values={key: value for key, value in secret_source.items()},
     )
 
 
+def _valid_secret_key(key: str) -> bool:
+    return bool(SECRET_KEY_RE.match(key))
+
+
+def _secret_payload_size(data: Mapping[str, str]) -> int:
+    return sum(len(k.encode("utf-8")) + len(v.encode("utf-8")) for k, v in data.items())
+
+
 def application_secret_data(settings: Settings) -> dict[str, str]:
-    data = {
-        key: value
-        for key, value in settings.values.items()
-        if key not in EXCLUDED_FROM_SECRET
-    }
+    data: dict[str, str] = {}
+    for key, value in settings.values.items():
+        if key in EXCLUDED_FROM_SECRET:
+            continue
+        if not _valid_secret_key(key):
+            raise SecretConfigError(
+                f"Invalid secret key '{key}' in .env. Use only letters, digits, '-', '_', and '.'."
+            )
+        data[key] = value
+
     user = quote(data["POSTGRES_USER"], safe="")
     password = quote(data["POSTGRES_PASSWORD"], safe="")
     mongo_user = quote(data["MONGO_USER"], safe="")
@@ -104,4 +158,12 @@ def application_secret_data(settings: Settings) -> dict[str, str]:
     data["DATABASE_B_URL"] = (
         f"postgresql://{user}:{password}@postgres:5432/{data['POSTGRES_DB_SECOND_YEAR']}"
     )
-    return data
+
+    ordered = dict(sorted(data.items()))
+    size = _secret_payload_size(ordered)
+    if size > MAX_SECRET_BYTES:
+        raise SecretConfigError(
+            f"Secret aether-env exceeds the 1 MiB Kubernetes limit ({size} bytes). "
+            "Remove large values from .env."
+        )
+    return ordered

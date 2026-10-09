@@ -3,9 +3,10 @@ from aether_env.confirm import phrase_accepted, required_phrase
 from aether_env.theme import PROD, QA
 
 
-def test_catalog_has_eight_apps_and_three_databases():
+def test_catalog_has_nine_apps_and_three_databases():
     keys = [item.key for item in WORKLOADS]
     assert keys == [
+        "kong",
         "aether-ms-auth",
         "aether-ms-calculator",
         "aether-ms-inventory",
@@ -22,9 +23,14 @@ def test_catalog_has_eight_apps_and_three_databases():
     assert get_workload("mongo").image == "mongo:8.0.13"
     assert get_workload("redis").image == "redis:8.2"
     assert get_workload("aether-rpa").ingress_path is None
-    assert get_workload("aether-web-flow").ingress_path == "/"
+    assert get_workload("aether-web-flow").ingress_path is None
     assert get_workload("aether-ms-auth").dockerfile_in_repo is True
     assert get_workload("ms-aeko-hub").dockerfile_in_repo is False
+
+
+def test_only_kong_has_ingress_path():
+    with_ingress = [w.key for w in WORKLOADS if w.ingress_path]
+    assert with_ingress == ["kong"]
 
 
 def test_themes_and_phrases():

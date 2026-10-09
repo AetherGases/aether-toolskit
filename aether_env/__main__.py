@@ -4,7 +4,7 @@ from pathlib import Path
 import colorama
 
 from aether_env.actions import Actions
-from aether_env.config import ConfigError, load_settings
+from aether_env.config import ConfigError, SecretConfigError, load_settings, read_dotenv
 from aether_env.menu import MenuState, run_menu
 from aether_env.preflight import missing_tools
 from aether_env.runner import SubprocessRunner
@@ -12,20 +12,19 @@ from aether_env.runner import SubprocessRunner
 
 def main(env: dict[str, str] | None = None) -> int:
     colorama.init()
+    env_file = Path(__file__).resolve().parents[1] / ".env"
+    dotenv = read_dotenv(env_file) if env is None else dict(env)
     if env is None:
-        env_file = Path(__file__).resolve().parents[1] / ".env"
-        if env_file.exists():
-            for line in env_file.read_text(encoding="utf-8").splitlines():
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#") or "=" not in stripped:
-                    continue
-                key, value = stripped.split("=", 1)
-                os.environ.setdefault(key.strip(), value.strip())
+        for key, value in dotenv.items():
+            os.environ.setdefault(key, value)
     source = os.environ if env is None else env
     try:
-        settings = load_settings(source)
+        settings = load_settings(source, app_env=dotenv)
     except ConfigError as exc:
         print("Missing keys in .env: " + ", ".join(exc.missing))
+        return 2
+    except SecretConfigError as exc:
+        print(str(exc))
         return 2
     absent = missing_tools()
     if absent and env is None:

@@ -1,5 +1,7 @@
 # Console de ambientes QA e produção
 
+> **Superseded for environment start/teardown:** cluster and node group only. See `docs/superpowers/specs/2026-10-09-cluster-only-lifecycle-design.md`. Workload actions in this document remain in force.
+
 ## Contexto
 
 O `aether-toolskit` sobe Postgres, Mongo e Redis no Docker local. QA e produção precisam de um console, no terminal, que crie o EKS do zero, publique as aplicações que têm código e os três bancos, e apague o ambiente inteiro quando ele não estiver em uso.

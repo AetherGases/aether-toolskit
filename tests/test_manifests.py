@@ -16,8 +16,22 @@ def test_databases_use_pinned_images_and_apps_use_the_given_image():
     assert "requirepass" in redis
     app = render_app(get_workload("aether-ms-auth"), "123.dkr.ecr.sa-east-1.amazonaws.com/aether/qa/aether-ms-auth:main")
     assert "containerPort: 8080" in app
-    ingress = render_ingress([item for item in WORKLOADS if item.ingress_path])
-    assert "rewrite-target: /$2" in ingress
-    assert "path: /" in ingress
-    assert "aether-web-flow" in ingress
-    assert "aether-rpa" not in ingress
+
+
+def test_ingress_exposes_only_kong():
+    kong = get_workload("kong")
+    ingress = render_ingress([kong])
+    assert "name: kong" in ingress
+    assert "aether-apis" not in ingress
+    assert "rewrite-target" not in ingress
+    assert "aether-ms-auth" not in ingress
+
+
+def test_app_services_are_cluster_ip_only():
+    for workload in WORKLOADS:
+        if workload.kind != "app" or workload.container_port is None:
+            continue
+        manifest = render_app(workload, "example:latest")
+        assert "type: ClusterIP" in manifest
+        assert "LoadBalancer" not in manifest
+        assert "NodePort" not in manifest

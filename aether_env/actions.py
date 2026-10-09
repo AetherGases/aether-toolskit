@@ -7,9 +7,17 @@ from aether_env.awscli import (
     caller_identity_args,
     cluster_config,
     create_cluster_args,
+    delete_security_group_args,
     delete_stack_args,
     describe_stack_args,
+    describe_stack_events_args,
     disable_stack_protection_args,
+    list_delete_failed_resource_ids_args,
+    list_eksctl_stack_names_args,
+    list_eks_cluster_security_group_ids_args,
+    list_eks_cluster_security_group_ids_by_name_args,
+    list_vpc_lattice_resource_ids_args,
+    stack_vpc_physical_id_args,
     wait_stack_delete_args,
     create_ecr_args,
     delete_cluster_args,
@@ -17,7 +25,6 @@ from aether_env.awscli import (
     list_nodegroups_args,
     wait_cluster_deleted_args,
     wait_nodegroup_deleted_args,
-    delete_ecr_args,
     describe_cluster_args,
     describe_ecr_args,
     docker_login_args,
@@ -26,10 +33,11 @@ from aether_env.awscli import (
     image_uri,
     kubeconfig_args,
 )
-from aether_env.catalog import WORKLOADS, get_workload
-from aether_env.config import Settings, application_secret_data
+from aether_env.catalog import get_workload
+from aether_env.config import SecretConfigError, Settings, application_secret_data
 from aether_env.confirm import phrase_accepted
 from aether_env.images import docker_build_args, docker_push_args, dockerfile_for, rev_parse_args, sync_main_commands
+from aether_env.kong import render_kong_config
 from aether_env.kube import (
     INGRESS_NGINX_URL,
     apply_stdin_args,
@@ -37,6 +45,7 @@ from aether_env.kube import (
     get_pods_args,
     ingress_hostname_args,
     ingress_ip_args,
+    ingress_nginx_rollout_status_args,
     rollout_restart_args,
     rollout_status_args,
     scale_args,
@@ -52,6 +61,24 @@ from aether_env.manifests import (
 )
 from aether_env.theme import theme_for
 
+_REMOVABLE_STACK_STATUSES = frozenset({
+    "ROLLBACK_COMPLETE",
+    "CREATE_FAILED",
+    "DELETE_FAILED",
+    "UPDATE_ROLLBACK_FAILED",
+    "UPDATE_ROLLBACK_COMPLETE",
+    "ROLLBACK_FAILED",
+})
+
+_REUSABLE_STACK_STATUSES = frozenset({
+    "CREATE_COMPLETE",
+    "UPDATE_COMPLETE",
+    "UPDATE_ROLLBACK_COMPLETE",
+    "CREATE_IN_PROGRESS",
+    "UPDATE_IN_PROGRESS",
+    "DELETE_IN_PROGRESS",
+})
+
 
 class Actions:
     def __init__(self, settings: Settings, runner, root: Path, write) -> None:
@@ -62,110 +89,18 @@ class Actions:
 
     def subir_ambiente(self, cluster_name: str) -> int:
         status = self._status(cluster_name)
-        if status is None:
-            if not self._remove_failed_stack(cluster_name):
-                return 1
-            config_path = None
-            if self.settings.cluster_role_arn:
-                config_path = self.root / ".kube" / f"{cluster_name}.yaml"
-                config_path.parent.mkdir(parents=True, exist_ok=True)
-                config_path.write_text(
-                    cluster_config(
-                        self.settings.aws_region,
-                        cluster_name,
-                        self.settings.node_type,
-                        self.settings.node_count,
-                        self.settings.cluster_role_arn,
-                        self.settings.node_role_arn,
-                    ),
-                    encoding="utf-8",
-                )
-            created = self._run(create_cluster_args(
-                self.settings.aws_region,
-                cluster_name,
-                self.settings.node_type,
-                self.settings.node_count,
-                str(config_path) if config_path else None,
-            ), stream=True)
-            if created.returncode != 0:
-                self.write("Failed to create the cluster.")
-                return 1
-        elif status != "ACTIVE":
-            self.write(f"Cluster status is {status}.")
-            return 1
-        else:
-            self.write("Cluster already exists. Publishing workloads.")
-        kubeconfig = self._kubeconfig(cluster_name)
-        kubeconfig.parent.mkdir(parents=True, exist_ok=True)
-        if self._run(kubeconfig_args(self.settings.aws_region, cluster_name, str(kubeconfig))).returncode != 0:
-            return 1
-        account = self._account()
-        if account is None:
-            return 1
-        if self._login(account) != 0:
-            return 1
-        failures = []
-        theme = theme_for(cluster_name)
-        slug = theme.slug
-        branch = theme.branch
-        for workload in WORKLOADS:
-            if workload.kind == "app" and workload.key != "aether-web-flow":
-                if self._publish_image(cluster_name, workload, account, "") != 0:
-                    failures.append(workload.key)
-        if not self._apply_checked(kubeconfig, render_namespace()):
-            return 1
-        if not self._apply_checked(kubeconfig, render_secret(application_secret_data(self.settings))):
-            return 1
-        if not self._apply_checked(kubeconfig, render_configmap("postgres-init", self._read_dir(self.root / "init-postgres"))):
-            return 1
-        mongo = (self.root / "init-mongo" / "init.js").read_text(encoding="utf-8")
-        if not self._apply_checked(kubeconfig, render_configmap("mongo-init", {"init.js": mongo})):
-            return 1
-        for workload in WORKLOADS:
-            if workload.kind == "database":
-                if not self._apply_checked(kubeconfig, render_database(workload)):
-                    return 1
-            elif workload.kind == "app" and workload.key != "aether-web-flow" and workload.key not in failures:
-                image = self._image(account, slug, workload.key, branch)
-                if not self._apply_checked(kubeconfig, render_app(workload, image)):
-                    return 1
-        nginx = self._run(apply_url_args(str(kubeconfig), INGRESS_NGINX_URL))
-        if nginx.returncode != 0:
-            if nginx.stdout:
-                self.write(nginx.stdout)
-            if nginx.stderr:
-                self.write(nginx.stderr)
-            return 1
-        if not self._apply_checked(kubeconfig, render_ingress([item for item in WORKLOADS if item.ingress_path])):
-            return 1
-        address = self._wait_address(kubeconfig)
-        if address:
-            api_url = f"http://{address}"
-        else:
-            api_url = ""
-            self.write("Load balancer has no hostname. aether-web-flow will keep an empty API_URL.")
-        web = get_workload("aether-web-flow")
-        if self._publish_image(cluster_name, web, account, api_url) != 0:
-            failures.append(web.key)
-        else:
-            if not self._apply_checked(kubeconfig, render_app(web, self._image(account, slug, web.key, branch))):
-                return 1
-        pods = self._run(get_pods_args(str(kubeconfig)))
-        self.write(pods.stdout)
-        if address:
-            for workload in WORKLOADS:
-                if workload.ingress_path:
-                    self.write(f"{api_url}{'' if workload.ingress_path == '/' else workload.ingress_path}")
-        if failures:
-            self.write("Failed to build " + ", ".join(failures) + ".")
-            return 1
-        return 0
+        if status == "ACTIVE":
+            self.write("Cluster already exists.")
+            return 0
+        if status in (None, "CREATING", "PENDING"):
+            return self._bootstrap_cluster(cluster_name)
+        self.write(f"Cluster status is {status}.")
+        return 1
 
     def derrubar_ambiente(self, cluster_name: str, typed: str) -> int:
         if not phrase_accepted(cluster_name, typed):
             self.write("Confirmation rejected.")
             return 1
-        slug = theme_for(cluster_name).slug
         failed = False
         described = self._run(describe_cluster_args(self.settings.aws_region, cluster_name))
         if described.returncode == 0 or not self._is_missing(described):
@@ -201,29 +136,18 @@ class Actions:
                 failed = True
         else:
             self.write("Cluster was already absent.")
-        if not self._delete_leftover_stacks(cluster_name):
+        if not self._delete_environment_stacks(cluster_name):
             failed = True
-        ecr_failed = False
-        for workload in WORKLOADS:
-            if workload.kind == "app":
-                repository = ecr_repository(slug, workload.key)
-                deleted = self._run(delete_ecr_args(self.settings.aws_region, repository))
-                if deleted.returncode != 0:
-                    self.write(f"Failed to delete {repository}.")
-                    if deleted.stdout:
-                        self.write(deleted.stdout)
-                    if deleted.stderr:
-                        self.write(deleted.stderr)
-                    ecr_failed = True
-        kubeconfig = self._kubeconfig(cluster_name)
-        if kubeconfig.exists():
-            kubeconfig.unlink()
-        if ecr_failed or failed:
+        if failed:
             return 1
         return 0
 
     def subir_workload(self, cluster_name: str, key: str) -> int:
         if not self._require_active(cluster_name):
+            return 1
+        if self._ensure_kubeconfig(cluster_name) != 0:
+            return 1
+        if self._ensure_platform(cluster_name) != 0:
             return 1
         workload = get_workload(key)
         kubeconfig = self._kubeconfig(cluster_name)
@@ -239,16 +163,26 @@ class Actions:
                 self.write(f"Failed to build {key}.")
                 return 1
             image = self._image(account, theme_for(cluster_name).slug, key, theme_for(cluster_name).branch)
-            if self._apply(kubeconfig, render_app(workload, image)).returncode != 0:
+            if not self._apply_checked(kubeconfig, render_app(workload, image)):
                 return 1
         else:
-            if self._apply(kubeconfig, render_database(workload)).returncode != 0:
+            if not self._apply_checked(kubeconfig, render_database(workload)):
                 return 1
         scaled = self._run(scale_args(str(kubeconfig), workload.k8s_kind, key, 1))
-        return scaled.returncode
+        if scaled.returncode != 0:
+            self._write_output(scaled)
+            return scaled.returncode
+        if workload.key == "kong" and self._ensure_gateway(cluster_name) != 0:
+            return 1
+        pods = self._run(get_pods_args(str(kubeconfig)))
+        if pods.stdout:
+            self.write(pods.stdout)
+        return 0
 
     def derrubar_workload(self, cluster_name: str, key: str) -> int:
         if not self._require_active(cluster_name):
+            return 1
+        if self._ensure_kubeconfig(cluster_name) != 0:
             return 1
         workload = get_workload(key)
         result = self._run(scale_args(str(self._kubeconfig(cluster_name)), workload.k8s_kind, key, 0))
@@ -256,6 +190,8 @@ class Actions:
 
     def update_workload(self, cluster_name: str, key: str) -> int:
         if not self._require_active(cluster_name):
+            return 1
+        if self._ensure_kubeconfig(cluster_name) != 0:
             return 1
         workload = get_workload(key)
         kubeconfig = str(self._kubeconfig(cluster_name))
@@ -300,45 +236,469 @@ class Actions:
         if result.stderr:
             self.write(result.stderr)
 
-    def _delete_leftover_stacks(self, cluster_name: str) -> bool:
-        stacks = [
-            f"eksctl-{cluster_name}-nodegroup-{name}"
-            for name in self._nodegroup_names(cluster_name)
-        ]
-        stacks.append(f"eksctl-{cluster_name}-cluster")
+    def _cluster_stack_name(self, cluster_name: str) -> str:
+        return f"eksctl-{cluster_name}-cluster"
+
+    def _bootstrap_cluster(self, cluster_name: str) -> int:
+        status = self._status(cluster_name)
+        if status == "ACTIVE":
+            return 0
+        if status in ("CREATING", "PENDING"):
+            if self._wait_cluster_active(cluster_name):
+                return 0
+            self.write("EKS cluster did not become ACTIVE.")
+            return 1
+        if status is not None:
+            self.write(f"Cluster status is {status}.")
+            return 1
+
+        cluster_stack = self._cluster_stack_name(cluster_name)
+        stack_status = self._stack_status(cluster_stack)
+        if stack_status is not None:
+            self.write(
+                f"CloudFormation stack {cluster_stack} exists ({stack_status}) "
+                f"but EKS cluster {cluster_name} was not found."
+            )
+            if not self._reconcile_cluster_stack(cluster_name, cluster_stack, stack_status):
+                return 1
+            if self._status(cluster_name) == "ACTIVE":
+                return 0
+            stack_status = self._stack_status(cluster_stack)
+
+        if self._status(cluster_name) == "ACTIVE":
+            return 0
+
+        if stack_status is None:
+            if not self._remove_failed_stack(cluster_name):
+                return 1
+            if self._stack_status(cluster_stack) is not None:
+                self.write(
+                    f"Cannot create the cluster while stack {cluster_stack} still exists."
+                )
+                return 1
+            return self._create_cluster_with_eksctl(cluster_name)
+
+        self.write("Ensuring the EKS cluster exists on the current infrastructure.")
+        return self._create_cluster_with_eksctl(cluster_name)
+
+    def _create_cluster_with_eksctl(self, cluster_name: str) -> int:
+        config_path = None
+        if self.settings.cluster_role_arn:
+            config_path = self.root / ".kube" / f"{cluster_name}.yaml"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(
+                cluster_config(
+                    self.settings.aws_region,
+                    cluster_name,
+                    self.settings.node_type,
+                    self.settings.node_count,
+                    self.settings.cluster_role_arn,
+                    self.settings.node_role_arn,
+                ),
+                encoding="utf-8",
+            )
+        created = self._run(create_cluster_args(
+            self.settings.aws_region,
+            cluster_name,
+            self.settings.node_type,
+            self.settings.node_count,
+            str(config_path) if config_path else None,
+        ), stream=True)
+        if created.returncode != 0:
+            self.write("Failed to create the cluster.")
+            return 1
+        if not self._wait_cluster_active(cluster_name):
+            self.write("EKS cluster did not become ACTIVE.")
+            return 1
+        return 0
+
+    def _reconcile_cluster_stack(
+        self,
+        _cluster_name: str,
+        cluster_stack: str,
+        stack_status: str,
+    ) -> bool:
+        self.write(
+            f"Reconciling {cluster_stack} ({stack_status}) for environment start."
+        )
+        if stack_status == "DELETE_FAILED":
+            self.write("Repairing blocked stack deletion (security groups, then retry).")
+            self._retry_stack_delete(cluster_stack)
+            if not self._wait_stack_absent(cluster_stack):
+                self._write_stack_failure_hint(cluster_stack)
+                return False
+            return True
+        if stack_status == "DELETE_IN_PROGRESS":
+            if not self._wait_stack_absent(cluster_stack):
+                self._write_stack_failure_hint(cluster_stack)
+                return False
+            return True
+        if stack_status in _REMOVABLE_STACK_STATUSES:
+            self.write(f"Repairing failed stack {cluster_stack}.")
+            if not self._force_delete_stack(
+                cluster_stack,
+                allow_complete=False,
+                wait_for_completion=False,
+            ):
+                return False
+            if not self._wait_stack_absent(cluster_stack):
+                self._write_stack_failure_hint(cluster_stack)
+                return False
+            return True
+        if stack_status in (
+            "CREATE_COMPLETE",
+            "UPDATE_COMPLETE",
+            "UPDATE_ROLLBACK_COMPLETE",
+        ):
+            self.write("Reusing the existing infrastructure stack.")
+            return True
+        if stack_status in ("CREATE_IN_PROGRESS", "UPDATE_IN_PROGRESS"):
+            self.write("Waiting for the infrastructure stack to finish provisioning.")
+            return self._wait_stack_status(
+                cluster_stack,
+                {
+                    "CREATE_COMPLETE",
+                    "UPDATE_COMPLETE",
+                    "UPDATE_ROLLBACK_COMPLETE",
+                },
+            )
+        self.write(f"Stack {cluster_stack} is in state {stack_status}.")
+        self._write_stack_failure_hint(cluster_stack)
+        return False
+
+    def _wait_stack_status(
+        self,
+        stack_name: str,
+        ok_statuses: set[str],
+        timeout: int = 900,
+    ) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            status = self._stack_status(stack_name)
+            if status in ok_statuses:
+                return True
+            if status is None:
+                return False
+            time.sleep(15)
+        return False
+
+    def _wait_stack_absent(self, stack_name: str, timeout: int = 600) -> bool:
+        self.write(
+            f"Waiting for stack {stack_name} to finish deleting "
+            f"(up to {timeout // 60} minutes). "
+            "This is normal after teardown; orphaned security groups are removed automatically."
+        )
+        deadline = time.monotonic() + timeout
+        last_status: str | None = None
+        last_remediation = 0.0
+        while time.monotonic() < deadline:
+            status = self._stack_status(stack_name)
+            if status is None:
+                return True
+            if status != last_status:
+                self.write(f"Stack {stack_name} status: {status}.")
+                last_status = status
+                last_remediation = 0.0
+            if status == "DELETE_FAILED":
+                self._retry_stack_delete(stack_name)
+            elif status == "DELETE_IN_PROGRESS":
+                if time.monotonic() - last_remediation >= 60:
+                    self._remediate_stuck_stack_delete(stack_name)
+                    last_remediation = time.monotonic()
+            time.sleep(15)
+        if self._stack_status(stack_name) is None:
+            return True
+        self._retry_stack_delete(stack_name)
+        return self._stack_status(stack_name) is None
+
+    def _remediate_stuck_stack_delete(self, stack_name: str) -> None:
+        self.write("Checking for orphaned EKS security groups that block VPC deletion.")
+        removed = self._cleanup_orphaned_eks_cluster_security_groups(stack_name)
+        if removed:
+            self.write(
+                f"Removed {removed} orphaned security group(s); "
+                "CloudFormation should resume deleting the stack."
+            )
+        else:
+            self.write("No orphaned eks-cluster security groups found.")
+        if self._stack_status(stack_name) == "DELETE_FAILED":
+            self._retry_stack_delete(stack_name)
+
+    def _retry_stack_delete(self, stack_name: str) -> None:
+        self._cleanup_orphaned_eks_cluster_security_groups(stack_name)
+        retain_ids = self._delete_failed_resource_ids(stack_name)
+        if retain_ids:
+            self.write(
+                "Retrying stack delete while retaining blocked resources: "
+                + ", ".join(retain_ids)
+                + "."
+            )
+            self._delete_stack_and_wait(
+                self.settings.aws_region,
+                stack_name,
+                retain_ids,
+                wait=False,
+            )
+            return
+        self._force_delete_stack(
+            stack_name,
+            allow_complete=True,
+            wait_for_completion=False,
+        )
+
+    def _wait_cluster_active(self, cluster_name: str, timeout: int = 900) -> bool:
+        self.write(
+            f"Waiting for cluster {cluster_name} to become ACTIVE "
+            f"(up to {timeout // 60} minutes)."
+        )
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            status = self._status(cluster_name)
+            if status == "ACTIVE":
+                return True
+            if status not in (None, "CREATING", "PENDING"):
+                self.write(f"Cluster status is {status}.")
+                return False
+            time.sleep(15)
+        return False
+
+    def _delete_environment_stacks(self, cluster_name: str) -> bool:
+        stacks = self._eksctl_stack_names(cluster_name)
+        if not stacks:
+            self.write("No CloudFormation stacks left for this environment.")
+            return True
         ok = True
         for stack_name in stacks:
-            described = self._run(describe_stack_args(self.settings.aws_region, stack_name))
-            if described.returncode != 0 or not described.stdout.strip():
-                continue
-            self.write(f"Removing stack {stack_name}.")
-            region = self.settings.aws_region
-            if self._run(disable_stack_protection_args(region, stack_name)).returncode != 0:
-                ok = False
-                continue
-            if self._run(delete_stack_args(region, stack_name)).returncode != 0:
-                ok = False
-                continue
-            if self._run(wait_stack_delete_args(region, stack_name)).returncode != 0:
+            if not self._force_delete_stack(
+                stack_name,
+                allow_complete=True,
+                wait_for_completion=True,
+            ):
                 ok = False
         return ok
 
     def _remove_failed_stack(self, cluster_name: str) -> bool:
-        stack_name = f"eksctl-{cluster_name}-cluster"
-        described = self._run(describe_stack_args(self.settings.aws_region, stack_name))
-        stack_status = described.stdout.strip()
-        if described.returncode != 0 or not stack_status:
+        stacks = self._eksctl_stack_names(cluster_name)
+        if not stacks:
             return True
-        if stack_status not in {"ROLLBACK_COMPLETE", "CREATE_FAILED"}:
-            self.write(f"CloudFormation stack {stack_name} is {stack_status}.")
-            return False
-        self.write(f"Removing failed stack {stack_name}.")
+        ok = True
+        for stack_name in stacks:
+            status = self._stack_status(stack_name)
+            if status is None or status in _REUSABLE_STACK_STATUSES:
+                continue
+            if status not in _REMOVABLE_STACK_STATUSES:
+                continue
+            if not self._force_delete_stack(
+                stack_name,
+                allow_complete=False,
+                wait_for_completion=False,
+            ):
+                ok = False
+        return ok
+
+    def _eksctl_stack_names(self, cluster_name: str) -> list[str]:
+        listed = self._run(list_eksctl_stack_names_args(self.settings.aws_region, cluster_name))
+        names = []
+        if listed.returncode == 0:
+            text = listed.stdout.strip()
+            if text and text not in {"None", "null"}:
+                names.extend(part for part in text.split() if part)
+        if names:
+            return self._sort_eksctl_stacks(names)
+        fallback = [
+            f"eksctl-{cluster_name}-nodegroup-{name}"
+            for name in self._nodegroup_names(cluster_name)
+        ]
+        fallback.append(f"eksctl-{cluster_name}-cluster")
+        present = []
+        for stack_name in fallback:
+            if self._stack_status(stack_name):
+                present.append(stack_name)
+        return self._sort_eksctl_stacks(present)
+
+    def _sort_eksctl_stacks(self, stack_names: list[str]) -> list[str]:
+        def sort_key(name: str) -> tuple[int, str]:
+            if "-nodegroup-" in name:
+                return (0, name)
+            if name.endswith("-cluster"):
+                return (2, name)
+            return (1, name)
+
+        return sorted(set(stack_names), key=sort_key)
+
+    def _stack_status(self, stack_name: str) -> str | None:
+        described = self._run(describe_stack_args(self.settings.aws_region, stack_name))
+        if described.returncode != 0:
+            return None
+        status = described.stdout.strip()
+        if not status or status in {"None", "null"}:
+            return None
+        return status
+
+    def _force_delete_stack(
+        self,
+        stack_name: str,
+        *,
+        allow_complete: bool = False,
+        wait_for_completion: bool = True,
+    ) -> bool:
+        status = self._stack_status(stack_name)
+        if status is None:
+            return True
         region = self.settings.aws_region
+        if status == "DELETE_IN_PROGRESS":
+            if wait_for_completion:
+                self.write(f"Waiting for stack {stack_name} deletion.")
+                if self._run(wait_stack_delete_args(region, stack_name)).returncode == 0:
+                    return True
+                status = self._stack_status(stack_name)
+                if status is None:
+                    return True
+            else:
+                return True
+        removable = set(_REMOVABLE_STACK_STATUSES)
+        if allow_complete:
+            removable.update({
+                "CREATE_COMPLETE",
+                "UPDATE_COMPLETE",
+                "UPDATE_ROLLBACK_COMPLETE",
+            })
+        if status not in removable:
+            self.write(f"CloudFormation stack {stack_name} is {status}.")
+            self._write_stack_failure_hint(stack_name)
+            return False
+        if status == "DELETE_FAILED":
+            self.write(f"Retrying cleanup of stuck stack {stack_name}.")
+        else:
+            self.write(f"Removing stack {stack_name}.")
         if self._run(disable_stack_protection_args(region, stack_name)).returncode != 0:
             return False
-        if self._run(delete_stack_args(region, stack_name)).returncode != 0:
+        self._cleanup_orphaned_eks_cluster_security_groups(stack_name)
+        if self._delete_stack_and_wait(region, stack_name, wait=wait_for_completion):
+            return True
+        self._cleanup_orphaned_eks_cluster_security_groups(stack_name)
+        retain_ids = self._delete_failed_resource_ids(stack_name)
+        if retain_ids:
+            self.write(
+                "Retrying stack delete while retaining blocked resources: "
+                + ", ".join(retain_ids)
+                + "."
+            )
+            if self._delete_stack_and_wait(
+                region, stack_name, retain_ids, wait=wait_for_completion
+            ):
+                return True
+        remaining = self._stack_status(stack_name)
+        if remaining is None:
+            return True
+        if not wait_for_completion:
+            self.write(
+                f"Stack {stack_name} is still {remaining}; continuing without waiting."
+            )
+            return True
+        self.write(f"CloudFormation stack {stack_name} is {remaining}.")
+        self._write_stack_failure_hint(stack_name)
+        return False
+
+    def _delete_stack_and_wait(
+        self,
+        region: str,
+        stack_name: str,
+        retain_resources: list[str] | None = None,
+        *,
+        wait: bool = True,
+    ) -> bool:
+        retain = list(retain_resources or [])
+        lattice_ids = self._vpc_lattice_resource_ids(stack_name)
+        for logical_id in lattice_ids:
+            if logical_id not in retain:
+                retain.append(logical_id)
+        if lattice_ids:
+            self.write(
+                "This account cannot delete VPC Lattice; retaining "
+                + ", ".join(lattice_ids)
+                + " so the stack can finish deleting."
+            )
+        deleted = self._run(delete_stack_args(region, stack_name, retain))
+        if deleted.returncode != 0 and not self._is_missing(deleted):
+            self._write_output(deleted)
             return False
+        if not wait:
+            return True
         return self._run(wait_stack_delete_args(region, stack_name)).returncode == 0
+
+    def _text_tokens(self, result) -> list[str]:
+        if result.returncode != 0:
+            return []
+        text = result.stdout.strip()
+        if not text or text in {"None", "null"}:
+            return []
+        return [part for part in text.split() if part]
+
+    def _vpc_lattice_resource_ids(self, stack_name: str) -> list[str]:
+        return self._text_tokens(
+            self._run(list_vpc_lattice_resource_ids_args(self.settings.aws_region, stack_name))
+        )
+
+    def _delete_failed_resource_ids(self, stack_name: str) -> list[str]:
+        lattice = set(self._vpc_lattice_resource_ids(stack_name))
+        failed = self._text_tokens(
+            self._run(list_delete_failed_resource_ids_args(self.settings.aws_region, stack_name))
+        )
+        return sorted(lattice.union(failed))
+
+    def _cluster_name_from_stack(self, stack_name: str) -> str | None:
+        prefix = "eksctl-"
+        suffix = "-cluster"
+        if stack_name.startswith(prefix) and stack_name.endswith(suffix):
+            return stack_name[len(prefix):-len(suffix)]
+        return None
+
+    def _cleanup_orphaned_eks_cluster_security_groups(self, stack_name: str) -> int:
+        cluster_name = self._cluster_name_from_stack(stack_name)
+        if cluster_name is None:
+            return 0
+        if self._status(cluster_name) is not None:
+            return 0
+        region = self.settings.aws_region
+        group_ids: list[str] = []
+        vpc_ids = self._text_tokens(
+            self._run(stack_vpc_physical_id_args(self.settings.aws_region, stack_name))
+        )
+        for vpc_id in vpc_ids:
+            group_ids.extend(
+                self._text_tokens(
+                    self._run(
+                        list_eks_cluster_security_group_ids_args(
+                            region, vpc_id, cluster_name
+                        )
+                    )
+                )
+            )
+        if not group_ids:
+            group_ids = self._text_tokens(
+                self._run(
+                    list_eks_cluster_security_group_ids_by_name_args(region, cluster_name)
+                )
+            )
+        removed = 0
+        for group_id in dict.fromkeys(group_ids):
+            self.write(f"Removing orphaned EKS security group {group_id}.")
+            deleted = self._run(delete_security_group_args(region, group_id))
+            if deleted.returncode == 0 or self._is_missing(deleted):
+                removed += 1
+            elif deleted.returncode != 0:
+                self._write_output(deleted)
+        return removed
+
+    def _write_stack_failure_hint(self, stack_name: str) -> None:
+        events = self._run(describe_stack_events_args(self.settings.aws_region, stack_name))
+        if events.returncode != 0:
+            return
+        text = events.stdout.strip()
+        if text:
+            self.write("Recent stack events:")
+            self.write(text)
 
     def _require_active(self, cluster_name: str) -> bool:
         if self._status(cluster_name) == "ACTIVE":
@@ -365,24 +725,30 @@ class Actions:
         registry = f"{account}.dkr.ecr.{self.settings.aws_region}.amazonaws.com"
         return self._run(docker_login_args(registry), stdin=password.stdout.strip()).returncode
 
-    def _publish_image(self, cluster_name: str, workload, account: str, api_url: str) -> int:
+    def _publish_image(self, cluster_name: str, workload, account: str, api_url: str, *, stream: bool = True) -> int:
         repository = ecr_repository(theme_for(cluster_name).slug, workload.key)
         described = self._run(describe_ecr_args(self.settings.aws_region, repository))
         if described.returncode != 0:
             created = self._run(create_ecr_args(self.settings.aws_region, repository))
             if created.returncode != 0:
                 return created.returncode
-        dest = self.root / "resources" / "build" / cluster_name / workload.repo
         branch = theme_for(cluster_name).branch
-        for command in sync_main_commands(workload.repo, str(dest), dest.exists(), branch):
-            if self._run(command).returncode != 0:
+        if workload.repo is None:
+            dest = self.root / "dockerfiles" / workload.key
+            if workload.key == "kong":
+                (dest / "kong.yml").write_text(render_kong_config(), encoding="utf-8")
+            sha = "local"
+        else:
+            dest = self.root / "resources" / "build" / cluster_name / workload.repo
+            for command in sync_main_commands(workload.repo, str(dest), dest.exists(), branch):
+                if self._run(command).returncode != 0:
+                    return 1
+            parsed = self._run(rev_parse_args(str(dest)))
+            if parsed.returncode != 0:
                 return 1
-        parsed = self._run(rev_parse_args(str(dest)))
-        if parsed.returncode != 0:
-            return 1
-        sha = parsed.stdout.strip()
-        if not sha:
-            return 1
+            sha = parsed.stdout.strip()
+            if not sha:
+                return 1
         tags = [
             self._image(account, theme_for(cluster_name).slug, workload.key, f"{branch}-{sha}"),
             self._image(account, theme_for(cluster_name).slug, workload.key, branch),
@@ -409,12 +775,79 @@ class Actions:
             return True
         if manifest.startswith("apiVersion: v1\nkind: Secret\n"):
             self.write("Failed to apply Secret aether-env.")
+            if result.stderr:
+                self.write(result.stderr)
             return False
-        if result.stdout:
-            self.write(result.stdout)
-        if result.stderr:
-            self.write(result.stderr)
+        self._write_output(result)
         return False
+
+    def _ensure_kubeconfig(self, cluster_name: str) -> int:
+        kubeconfig = self._kubeconfig(cluster_name)
+        kubeconfig.parent.mkdir(parents=True, exist_ok=True)
+        self.write("Updating kubeconfig.")
+        result = self._run(kubeconfig_args(self.settings.aws_region, cluster_name, str(kubeconfig)))
+        if result.returncode != 0:
+            self._write_output(result)
+            return 1
+        return 0
+
+    def _ensure_platform(self, cluster_name: str) -> int:
+        kubeconfig = self._kubeconfig(cluster_name)
+        self.write("Applying namespace, secrets, and init data.")
+        if not self._apply_checked(kubeconfig, render_namespace()):
+            return 1
+        try:
+            secret_manifest = render_secret(application_secret_data(self.settings))
+        except SecretConfigError as exc:
+            self.write(str(exc))
+            return 1
+        if not self._apply_checked(kubeconfig, secret_manifest):
+            return 1
+        postgres_init = self._read_dir(self.root / "init-postgres")
+        if not self._apply_checked(kubeconfig, render_configmap("postgres-init", postgres_init)):
+            return 1
+        mongo_path = self.root / "init-mongo" / "init.js"
+        mongo = mongo_path.read_text(encoding="utf-8") if mongo_path.exists() else ""
+        if not self._apply_checked(kubeconfig, render_configmap("mongo-init", {"init.js": mongo})):
+            return 1
+        return 0
+
+    def _ensure_gateway(self, cluster_name: str) -> int:
+        kubeconfig = self._kubeconfig(cluster_name)
+        self.write("Installing ingress-nginx.")
+        nginx = self._run(apply_url_args(str(kubeconfig), INGRESS_NGINX_URL))
+        if nginx.returncode != 0:
+            self._write_output(nginx)
+            return 1
+        self.write("Waiting for ingress-nginx admission webhook (up to 5 minutes).")
+        ready = self._run(ingress_nginx_rollout_status_args(str(kubeconfig)))
+        if ready.returncode != 0:
+            self._write_output(ready)
+            self.write("ingress-nginx is not ready; cannot create the gateway Ingress.")
+            return 1
+        if not self._apply_checked(kubeconfig, render_ingress([get_workload("kong")])):
+            return 1
+        self.write("Waiting for the load balancer hostname (up to 5 minutes).")
+        address = self._wait_address(kubeconfig)
+        self._write_gateway_url(cluster_name, f"http://{address}" if address else "")
+        return 0
+
+    def _write_gateway_url(self, cluster_name: str, api_url: str) -> None:
+        if api_url:
+            self.write(f"URL externa ({cluster_name}): {api_url}")
+            return
+        self.write(
+            f"URL externa ({cluster_name}): indisponivel. "
+            "Apenas o Kong e publico quando o balanceador estiver pronto."
+        )
+
+    def _read_dir(self, directory: Path) -> dict[str, str]:
+        files = {}
+        if not directory.is_dir():
+            return files
+        for path in sorted(directory.glob("*.sql")):
+            files[path.name] = path.read_text(encoding="utf-8")
+        return files
 
     def _wait_address(self, kubeconfig: Path) -> str:
         deadline = time.monotonic() + 300
@@ -427,12 +860,6 @@ class Actions:
                 return ip
             time.sleep(5)
         return ""
-
-    def _read_dir(self, directory: Path) -> dict[str, str]:
-        files = {}
-        for path in sorted(directory.glob("*.sql")):
-            files[path.name] = path.read_text(encoding="utf-8")
-        return files
 
     def _kubeconfig(self, cluster_name: str) -> Path:
         return self.root / ".kube" / cluster_name

@@ -28,6 +28,8 @@ class SubprocessRunner:
             cwd=cwd,
             input=stdin,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=not stream,
         )
         return CommandResult(

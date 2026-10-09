@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_toolkit_dockerfiles_exist_and_name_the_process():
     expected = {
+        "kong": "KONG_DATABASE=off",
         "ms-aeko-hub": "uvicorn",
         "aether-rpa": "src.worker",
         "aether-web-flow": "API_URL",
@@ -20,5 +21,5 @@ def test_toolkit_dockerfiles_exist_and_name_the_process():
         path = dockerfile_for(ROOT, workload, ROOT / "unused")
         text = path.read_text(encoding="utf-8")
         assert expected[workload.key] in text
-        if workload.key != "aether-web-flow":
+        if workload.key not in ("aether-web-flow", "kong"):
             assert "/app/.env" in text

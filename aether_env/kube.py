@@ -40,6 +40,13 @@ def get_pods_args(kubeconfig: str) -> list[str]:
     return _base(kubeconfig) + ["-n", "aether", "get", "pods"]
 
 
+def ingress_nginx_rollout_status_args(kubeconfig: str) -> list[str]:
+    return _base(kubeconfig) + [
+        "-n", "ingress-nginx", "rollout", "status",
+        "deployment/ingress-nginx-controller", "--timeout=300s",
+    ]
+
+
 def ingress_hostname_args(kubeconfig: str) -> list[str]:
     return _base(kubeconfig) + [
         "-n", "ingress-nginx", "get", "svc", "ingress-nginx-controller",

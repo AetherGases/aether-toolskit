@@ -11,16 +11,13 @@ def test_root_render_colors():
 def test_qa_confirm_render_colors():
     text = render(MenuState("confirm-teardown", "aether-qa"))
     assert f"{QA.accent}aether-qa{QA.reset}" in text
-    assert f"{QA.text} deletes the cluster, disks, and data.{QA.reset}" in text
-    assert (
-        f"{QA.accent}Tear down {QA.accent}aether-qa{QA.reset}{QA.text} deletes the cluster, disks, and data.{QA.reset}"
-        in text
-    )
+    assert f"{QA.text}This deletes {QA.accent}aether-qa{QA.reset}{QA.text}, disks, and data.{QA.reset}" in text
+    assert "Tear down" in text
 
 
 def test_qa_environment_option_zero_is_blue():
     text = render(MenuState("environment", "aether-qa"))
-    assert f"{QA.accent}0{QA.reset} {QA.text}Back{QA.reset}" in text
+    assert f"{QA.accent}0{QA.reset}  {QA.text}Back{QA.reset}" in text
 
 
 def test_qa_environment_is_blue_and_white():
@@ -39,12 +36,34 @@ def test_prod_environment_is_red_and_white():
     assert "\033[94m" not in text
 
 
+def test_frame_lines_have_single_border():
+    for state in (
+        MenuState("root"),
+        MenuState("environment", "aether-qa"),
+        MenuState("workloads", "aether-qa"),
+        MenuState("confirm-teardown", "aether-qa"),
+        MenuState("action", "aether-qa", "kong"),
+    ):
+        for line in render(state).splitlines():
+            if "╭" in line or "╰" in line:
+                continue
+            assert line.count("│") == 2
+
+
+def test_workloads_are_grouped_by_kind():
+    text = render(MenuState("workloads", "aether-qa"))
+    assert f"{QA.dim}Applications{QA.reset}" in text
+    assert f"{QA.dim}Databases{QA.reset}" in text
+    assert text.index("Applications") < text.index("Kong Gateway")
+    assert text.index("Databases") < text.index("Postgres")
+
+
 def test_navigation_and_actions():
     qa = next_state(MenuState("root"), "1")
     assert qa == MenuState("environment", "aether-qa")
     workloads = next_state(qa, "3")
     assert workloads.screen == "workloads"
-    auth = next_state(workloads, "1")
+    auth = next_state(workloads, "2")
     assert auth.workload_key == "aether-ms-auth"
     update = next_state(auth, "3")
     assert update.action == "update"
