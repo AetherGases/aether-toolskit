@@ -42,18 +42,13 @@ def main(env: dict[str, str] | None = None) -> int:
             return actions.escalar_ambiente_zero(state.cluster_name or "")
         if state.action == "subir":
             return actions.subir_workload(state.cluster_name or "", state.workload_key or "")
-        if state.action == "derrubar":
-            return actions.derrubar_workload(state.cluster_name or "", state.workload_key or "")
         if state.action == "escalar-zero":
             return actions.escalar_workload_zero(state.cluster_name or "", state.workload_key or "")
         if state.action == "update":
             return actions.update_workload(state.cluster_name or "", state.workload_key or "")
         return 1
 
-    def on_confirm(cluster: str, phrase: str) -> int:
-        return actions.derrubar_ambiente(cluster, phrase)
-
-    return run_menu(input, print, on_run, on_confirm)
+    return run_menu(input, print, on_run)
 
 
 if __name__ == "__main__":

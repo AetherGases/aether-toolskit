@@ -8,13 +8,6 @@ def test_root_render_colors():
     assert f"{PROD.accent}Production{PROD.reset}" in text
 
 
-def test_qa_confirm_render_colors():
-    text = render(MenuState("confirm-teardown", "aether-qa"))
-    assert f"{QA.accent}aether-qa{QA.reset}" in text
-    assert f"{QA.text}This deletes {QA.accent}aether-qa{QA.reset}{QA.text}, disks, and data.{QA.reset}" in text
-    assert "Tear down" in text
-
-
 def test_qa_environment_option_zero_is_blue():
     text = render(MenuState("environment", "aether-qa"))
     assert f"{QA.accent}0{QA.reset}  {QA.text}Back{QA.reset}" in text
@@ -26,7 +19,7 @@ def test_qa_environment_is_blue_and_white():
     assert "\033[97m" in text
     assert "\033[91m" not in text
     assert "Start environment" in text
-    assert "Tear down environment" in text
+    assert "Tear down environment" not in text
     assert "Scale to zero" in text
 
 
@@ -36,7 +29,7 @@ def test_prod_environment_is_red_and_white():
     assert "\033[97m" in text
     assert "\033[94m" not in text
     assert "Scale to zero" in text
-    assert "Tear down environment" in text
+    assert "Tear down environment" not in text
 
 
 def test_frame_lines_have_single_border():
@@ -44,7 +37,6 @@ def test_frame_lines_have_single_border():
         MenuState("root"),
         MenuState("environment", "aether-qa"),
         MenuState("workloads", "aether-qa"),
-        MenuState("confirm-teardown", "aether-qa"),
         MenuState("action", "aether-qa", "kong"),
     ):
         for line in render(state).splitlines():
@@ -70,31 +62,32 @@ def test_navigation_and_actions():
     assert auth.workload_key == "aether-ms-auth"
     update = next_state(auth, "3")
     assert update.action == "update"
-    scale_env = next_state(qa, "4")
+    scale_env = next_state(qa, "2")
     assert scale_env == MenuState("run", "aether-qa", action="escalar-ambiente-zero")
-    scale_item = next_state(auth, "4")
+    scale_item = next_state(auth, "2")
     assert scale_item.action == "escalar-zero"
+    assert next_state(qa, "4") == qa
     assert next_state(MenuState("root"), "0") is None
 
 
-def test_action_menu_keeps_teardown_and_adds_scale_to_zero():
+def test_action_menu_has_scale_to_zero_without_teardown():
     text = render(MenuState("action", "aether-qa", "kong"))
     assert "Start" in text
-    assert "Tear down" in text
+    assert "Tear down" not in text
     assert "Update" in text
     assert "Scale to zero" in text
 
 
-def test_run_menu_asks_phrase_before_teardown():
+def test_run_menu_scale_to_zero_from_environment():
     seen = []
-    lines = iter(["2", "2", "nope", "0", "0"])
+    lines = iter(["1", "2", "0", "0"])
     writes = []
 
-    def on_confirm(cluster, phrase):
-        seen.append((cluster, phrase))
+    def on_run(state):
+        seen.append(state.action)
         return 0
 
-    code = run_menu(lambda: next(lines), writes.append, lambda state: 0, on_confirm)
+    code = run_menu(lambda: next(lines), writes.append, on_run)
     assert code == 0
-    assert seen == [("aether-prod", "nope")]
-    assert any("aether-prod" in item for item in writes)
+    assert seen == ["escalar-ambiente-zero"]
+    assert any("Scale to zero" in item for item in writes)

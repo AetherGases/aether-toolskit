@@ -2,7 +2,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from aether_env.catalog import WORKLOADS
-from aether_env.confirm import required_phrase
 from aether_env.theme import PROD, QA, Theme, theme_for
 
 _FRAME_WIDTH = 50
@@ -31,11 +30,9 @@ def next_state(state: MenuState, choice: str) -> MenuState | None:
         if choice == "1":
             return MenuState("run", state.cluster_name, action="subir-ambiente")
         if choice == "2":
-            return MenuState("confirm-teardown", state.cluster_name)
+            return MenuState("run", state.cluster_name, action="escalar-ambiente-zero")
         if choice == "3":
             return MenuState("workloads", state.cluster_name)
-        if choice == "4":
-            return MenuState("run", state.cluster_name, action="escalar-ambiente-zero")
         if choice == "0":
             return MenuState("root")
         return state
@@ -47,7 +44,7 @@ def next_state(state: MenuState, choice: str) -> MenuState | None:
             return MenuState("action", state.cluster_name, workload.key)
         return state
     if state.screen == "action":
-        actions = {"1": "subir", "2": "derrubar", "3": "update", "4": "escalar-zero"}
+        actions = {"1": "subir", "2": "escalar-zero", "3": "update"}
         if choice in actions:
             return MenuState("run", state.cluster_name, state.workload_key, actions[choice])
         if choice == "0":
@@ -109,16 +106,6 @@ def _back_line(theme: Theme) -> str:
     return _option(theme, "0", "Back")
 
 
-def _phrase_line(theme: Theme) -> str:
-    phrase = required_phrase(theme.cluster_name)
-    if phrase == theme.cluster_name:
-        phrase_colored = f"{theme.accent}{phrase}{theme.reset}"
-    else:
-        phrase_colored = f"{theme.text}{phrase}{theme.reset}"
-    content = f"  {theme.text}Type {phrase_colored}{theme.reset}"
-    return _line(content)
-
-
 def _root_option(number: str, label: str, accent: str, text: str, reset: str) -> str:
     content = f"  {accent}{number}{reset}  {accent}{label}{reset}"
     return _line(content)
@@ -140,9 +127,8 @@ def render(state: MenuState) -> str:
         body = [
             _blank(theme),
             _option(theme, "1", "Start environment"),
-            _option(theme, "2", "Tear down environment"),
+            _option(theme, "2", "Scale to zero"),
             _option(theme, "3", "Choose workload"),
-            _option(theme, "4", "Scale to zero"),
             _blank(theme),
             _back_line(theme),
         ]
@@ -161,31 +147,18 @@ def render(state: MenuState) -> str:
             body.extend([_blank(theme), _section(theme, "Databases"), *db_lines])
         body.extend([_blank(theme), _back_line(theme)])
         return "\n".join([_frame(theme, "Workloads", body), ""])
-    if state.screen == "confirm-teardown":
-        warning = (
-            f"  {theme.text}This deletes {theme.accent}{theme.cluster_name}{theme.reset}"
-            f"{theme.text}, disks, and data.{theme.reset}"
-        )
-        body = [
-            _blank(theme),
-            _line(warning),
-            _blank(theme),
-            _phrase_line(theme),
-        ]
-        return "\n".join([_frame(theme, "Tear down", body), ""])
     body = [
         _blank(theme),
         _option(theme, "1", "Start"),
-        _option(theme, "2", "Tear down"),
+        _option(theme, "2", "Scale to zero"),
         _option(theme, "3", "Update"),
-        _option(theme, "4", "Scale to zero"),
         _blank(theme),
         _back_line(theme),
     ]
     return "\n".join([_frame(theme, state.workload_key or "", body), ""])
 
 
-def run_menu(read_line: Callable[[], str], write: Callable[[str], None], on_run: Callable[[MenuState], int], on_confirm: Callable[[str, str], int]) -> int:
+def run_menu(read_line: Callable[[], str], write: Callable[[str], None], on_run: Callable[[MenuState], int]) -> int:
     state: MenuState | None = MenuState("root")
     while state is not None:
         if state.screen == "run":
@@ -197,9 +170,5 @@ def run_menu(read_line: Callable[[], str], write: Callable[[str], None], on_run:
             continue
         write(render(state))
         choice = read_line()
-        if state.screen == "confirm-teardown":
-            on_confirm(state.cluster_name or "", choice)
-            state = MenuState("environment", state.cluster_name)
-            continue
         state = next_state(state, choice)
     return 0
