@@ -160,6 +160,8 @@ def application_secret_data(settings: Settings) -> dict[str, str]:
     data["DATABASE_B_URL"] = (
         f"postgresql://{user}:{password}@postgres:5432/{data['POSTGRES_DB_SECOND_YEAR']}"
     )
+    data.pop("PROFILE_MS_BASE_URL", None)
+    data["AUTH_MS_BASE_URL"] = "http://aether-ms-auth:8080"
 
     ordered = dict(sorted(data.items()))
     size = _secret_payload_size(ordered)

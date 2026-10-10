@@ -85,3 +85,14 @@ def test_defaults_and_secret_rewrite_hosts():
     assert data["GEMINI_API_KEY"] == ""
     assert data["OAUTH_ISSUER"] == "https://aethergases.org/hub"
     assert data["OAUTH_AUDIENCE"] == "https://aethergases.org/hub/aether-api/v1/mcp/"
+    assert data["AUTH_MS_BASE_URL"] == "http://aether-ms-auth:8080"
+    assert "PROFILE_MS_BASE_URL" not in data
+
+
+def test_profile_ms_base_url_stripped_from_secret():
+    dotenv = _env()
+    dotenv["PROFILE_MS_BASE_URL"] = "http://legacy-profile:8080"
+    settings = load_settings(_env(), app_env=dotenv)
+    data = application_secret_data(settings)
+    assert "PROFILE_MS_BASE_URL" not in data
+    assert data["AUTH_MS_BASE_URL"] == "http://aether-ms-auth:8080"
