@@ -202,6 +202,20 @@ def test_database_update_restarts_and_skips_docker():
     assert all(not item.startswith("docker build") for item in flat)
 
 
+def test_app_update_applies_image_and_restarts_deployment():
+    messages = []
+    runner = FakeRunner()
+    actions = Actions(_settings(), runner, Path("."), messages.append)
+    with patch.object(Actions, "_publish_image", return_value="develop-abc123"):
+        assert actions.update_workload("aether-qa", "ms-aeko-hub") == 0
+    assert any(
+        "aether/qa/ms-aeko-hub:develop-abc123" in message for message in messages
+    )
+    flat = [" ".join(call) for call in runner.calls]
+    assert any("status.phase=Failed" in item for item in flat)
+    assert not any("rollout restart deployment/ms-aeko-hub" in item for item in flat)
+
+
 def test_active_cluster_skips_eksctl_create_even_with_stack():
     root = Path(__file__).resolve().parents[1]
 

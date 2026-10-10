@@ -24,6 +24,7 @@ def test_databases_use_pinned_images_and_apps_use_the_given_image():
     assert "volumeClaimTemplates" not in redis
     app = render_app(get_workload("aether-ms-auth"), "123.dkr.ecr.sa-east-1.amazonaws.com/aether/qa/aether-ms-auth:main")
     assert "containerPort: 8080" in app
+    assert "type: Recreate" in app
 
 
 def test_ingress_exposes_only_kong():

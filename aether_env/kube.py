@@ -36,8 +36,20 @@ def rollout_restart_args(kubeconfig: str, name: str) -> list[str]:
     return _base(kubeconfig) + ["-n", "aether", "rollout", "restart", f"statefulset/{name}"]
 
 
+def rollout_restart_deployment_args(kubeconfig: str, name: str) -> list[str]:
+    return _base(kubeconfig) + ["-n", "aether", "rollout", "restart", f"deployment/{name}"]
+
+
 def get_pods_args(kubeconfig: str) -> list[str]:
     return _base(kubeconfig) + ["-n", "aether", "get", "pods"]
+
+
+def delete_failed_pods_args(kubeconfig: str) -> list[str]:
+    return _base(kubeconfig) + [
+        "-n", "aether", "delete", "pod",
+        "--field-selector", "status.phase=Failed",
+        "--ignore-not-found=true",
+    ]
 
 
 def delete_resource_args(kubeconfig: str, resource: str) -> list[str]:

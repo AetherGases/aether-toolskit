@@ -45,6 +45,7 @@ from aether_env.kube import (
     INGRESS_NGINX_URL,
     apply_stdin_args,
     apply_url_args,
+    delete_failed_pods_args,
     delete_pvc_args,
     delete_resource_args,
     get_pods_args,
@@ -55,7 +56,6 @@ from aether_env.kube import (
     rollout_restart_args,
     rollout_status_args,
     scale_args,
-    set_image_args,
 )
 from aether_env.manifests import (
     render_app,
@@ -168,10 +168,11 @@ class Actions:
             if workload.key == "aether-web-flow":
                 address = self._wait_address(kubeconfig)
                 api_url = f"http://{address}" if address else ""
-            if self._publish_image(cluster_name, workload, account, api_url) != 0:
+            image_tag = self._publish_image(cluster_name, workload, account, api_url)
+            if image_tag is None:
                 self.write(f"Failed to build {key}.")
                 return 1
-            image = self._image(account, theme_for(cluster_name).slug, key, theme_for(cluster_name).branch)
+            image = self._image(account, theme_for(cluster_name).slug, key, image_tag)
             if not self._apply_checked(kubeconfig, render_app(workload, image)):
                 return 1
         else:
@@ -292,13 +293,15 @@ class Actions:
         if workload.key == "aether-web-flow":
             address = self._wait_address(self._kubeconfig(cluster_name))
             api_url = f"http://{address}" if address else ""
-        if self._publish_image(cluster_name, workload, account, api_url) != 0:
+        image_tag = self._publish_image(cluster_name, workload, account, api_url)
+        if image_tag is None:
             self.write(f"Failed to build {key}.")
             return 1
-        image = self._image(account, theme_for(cluster_name).slug, key, theme_for(cluster_name).branch)
-        updated = self._run(set_image_args(kubeconfig, key, image))
-        if updated.returncode != 0:
-            return updated.returncode
+        image = self._image(account, theme_for(cluster_name).slug, key, image_tag)
+        self.write(f"Deploying {image}")
+        self._run(delete_failed_pods_args(kubeconfig))
+        if not self._apply_checked(self._kubeconfig(cluster_name), render_app(workload, image)):
+            return 1
         return self._run(rollout_status_args(kubeconfig, "deployment", key)).returncode
 
     def _desired_node_size(self, cluster_name: str, nodegroup_name: str) -> int | None:
@@ -865,13 +868,16 @@ class Actions:
         registry = f"{account}.dkr.ecr.{self.settings.aws_region}.amazonaws.com"
         return self._run(docker_login_args(registry), stdin=password.stdout.strip()).returncode
 
-    def _publish_image(self, cluster_name: str, workload, account: str, api_url: str, *, stream: bool = True) -> int:
+    def _publish_image(
+        self, cluster_name: str, workload, account: str, api_url: str, *, stream: bool = True
+    ) -> str | None:
+        """Build and push workload images. Returns the immutable deploy tag on success."""
         repository = ecr_repository(theme_for(cluster_name).slug, workload.key)
         described = self._run(describe_ecr_args(self.settings.aws_region, repository))
         if described.returncode != 0:
             created = self._run(create_ecr_args(self.settings.aws_region, repository))
             if created.returncode != 0:
-                return created.returncode
+                return None
         branch = theme_for(cluster_name).branch
         if workload.repo is None:
             dest = self.root / "dockerfiles" / workload.key
@@ -882,26 +888,27 @@ class Actions:
             dest = self.root / "resources" / "build" / cluster_name / workload.repo
             for command in sync_main_commands(workload.repo, str(dest), dest.exists(), branch):
                 if self._run(command).returncode != 0:
-                    return 1
+                    return None
             parsed = self._run(rev_parse_args(str(dest)))
             if parsed.returncode != 0:
-                return 1
+                return None
             sha = parsed.stdout.strip()
             if not sha:
-                return 1
+                return None
+        deploy_tag = f"{branch}-{sha}"
         tags = [
-            self._image(account, theme_for(cluster_name).slug, workload.key, f"{branch}-{sha}"),
+            self._image(account, theme_for(cluster_name).slug, workload.key, deploy_tag),
             self._image(account, theme_for(cluster_name).slug, workload.key, branch),
         ]
         dockerfile = dockerfile_for(self.root, workload, dest)
         build_args = {"API_URL": api_url} if workload.key == "aether-web-flow" else {}
         built = self._run(docker_build_args(str(dockerfile), str(dest), tags, build_args), stream=True)
         if built.returncode != 0:
-            return built.returncode
+            return None
         for tag in tags:
             if self._run(docker_push_args(tag), stream=True).returncode != 0:
-                return 1
-        return 0
+                return None
+        return deploy_tag
 
     def _image(self, account: str, slug: str, key: str, tag: str) -> str:
         return image_uri(account, self.settings.aws_region, ecr_repository(slug, key), tag)

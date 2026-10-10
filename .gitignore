@@ -26,3 +26,5 @@ TestResults.xml
 .kube/
 #Resources
 resources/
+
+.__pycache__/*

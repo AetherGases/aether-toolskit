@@ -190,6 +190,8 @@ metadata:
   namespace: aether
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: {workload.key}
@@ -201,6 +203,7 @@ spec:
       containers:
         - name: {workload.key}
           image: {image}
+          imagePullPolicy: Always
 {ports}          envFrom:
             - secretRef:
                 name: aether-env
