@@ -9,11 +9,19 @@ def test_secret_quotes_password_and_hides_aws_key():
 
 
 def test_databases_use_pinned_images_and_apps_use_the_given_image():
-    assert "postgres:16.10" in render_database(get_workload("postgres"))
-    assert "mongo:8.0.13" in render_database(get_workload("mongo"))
+    postgres = render_database(get_workload("postgres"))
+    assert "hostPath:" in postgres
+    assert "/var/lib/aether/postgres" in postgres
+    assert "volumeClaimTemplates" not in postgres
+    assert "postgres:16.10" in postgres
+    mongo = render_database(get_workload("mongo"))
+    assert "mongo:8.0.13" in mongo
+    assert "/var/lib/aether/mongo" in mongo
     redis = render_database(get_workload("redis"))
     assert "redis:8.2" in redis
     assert "requirepass" in redis
+    assert "/var/lib/aether/redis" in redis
+    assert "volumeClaimTemplates" not in redis
     app = render_app(get_workload("aether-ms-auth"), "123.dkr.ecr.sa-east-1.amazonaws.com/aether/qa/aether-ms-auth:main")
     assert "containerPort: 8080" in app
 

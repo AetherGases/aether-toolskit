@@ -89,11 +89,11 @@ def render_database(workload: Workload) -> str:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+              subPath: pgdata
             - name: init
               mountPath: /docker-entrypoint-initdb.d
 """ + _probe(5432)
-        extra_volume = """      volumes:
-        - name: init
+        extra_volumes = """        - name: init
           configMap:
             name: postgres-init
 """
@@ -124,8 +124,7 @@ def render_database(workload: Workload) -> str:
             - name: init
               mountPath: /docker-entrypoint-initdb.d
 """ + _probe(27017)
-        extra_volume = """      volumes:
-        - name: init
+        extra_volumes = """        - name: init
           configMap:
             name: mongo-init
 """
@@ -145,7 +144,12 @@ def render_database(workload: Workload) -> str:
             - name: data
               mountPath: /data
 """ + _probe(6379)
-        extra_volume = ""
+        extra_volumes = ""
+    data_volume = f"""        - name: data
+          hostPath:
+            path: /var/lib/aether/{workload.key}
+            type: DirectoryOrCreate
+"""
     body = f"""apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -162,16 +166,11 @@ spec:
       labels:
         app: {workload.key}
     spec:
+      securityContext:
+        fsGroup: 999
       containers:
-{container}{extra_volume}  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 20Gi
----
+{container}      volumes:
+{data_volume}{extra_volumes}---
 {_service(workload.key, workload.container_port or 0)}"""
     return body
 

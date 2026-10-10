@@ -45,8 +45,11 @@ from aether_env.kube import (
     INGRESS_NGINX_URL,
     apply_stdin_args,
     apply_url_args,
+    delete_pvc_args,
+    delete_resource_args,
     get_pods_args,
     ingress_hostname_args,
+    logs_follow_args,
     ingress_ip_args,
     ingress_nginx_rollout_status_args,
     rollout_restart_args,
@@ -172,6 +175,7 @@ class Actions:
             if not self._apply_checked(kubeconfig, render_app(workload, image)):
                 return 1
         else:
+            self._retire_database_claim(str(kubeconfig), key)
             if not self._apply_checked(kubeconfig, render_database(workload)):
                 return 1
         scaled = self._run(scale_args(str(kubeconfig), workload.k8s_kind, key, 1))
@@ -191,14 +195,7 @@ class Actions:
         if self._ensure_kubeconfig(cluster_name) != 0:
             return 1
         kubeconfig = str(self._kubeconfig(cluster_name))
-        failed = False
-        for workload in WORKLOADS:
-            result = self._run(scale_args(kubeconfig, workload.k8s_kind, workload.key, 0))
-            if result.returncode != 0:
-                text = f"{result.stdout}\n{result.stderr}".lower()
-                if "not found" not in text:
-                    self._write_output(result)
-                    failed = True
+        failed = not self._scale_catalog(kubeconfig, 0)
         if self._scale_nodegroups(cluster_name, 0) != 0:
             failed = True
         if failed:
@@ -206,8 +203,66 @@ class Actions:
         self.write("Scaled to zero. Cluster is still running.")
         return 0
 
+    def escalar_ambiente_um(self, cluster_name: str) -> int:
+        if not self._require_active(cluster_name):
+            return 1
+        if self._ensure_kubeconfig(cluster_name) != 0:
+            return 1
+        if self._scale_nodegroups(cluster_name, self.settings.node_count) != 0:
+            return 1
+        kubeconfig = str(self._kubeconfig(cluster_name))
+        if not self._scale_catalog(kubeconfig, 1):
+            return 1
+        self.write("Scaled to one.")
+        return 0
+
     def escalar_workload_zero(self, cluster_name: str, key: str) -> int:
         return self.derrubar_workload(cluster_name, key)
+
+    def escalar_workload_um(self, cluster_name: str, key: str) -> int:
+        if not self._require_active(cluster_name):
+            return 1
+        if self._ensure_kubeconfig(cluster_name) != 0:
+            return 1
+        if self._scale_nodegroups(cluster_name, self.settings.node_count) != 0:
+            return 1
+        workload = get_workload(key)
+        result = self._run(
+            scale_args(str(self._kubeconfig(cluster_name)), workload.k8s_kind, key, 1)
+        )
+        if result.returncode != 0:
+            self._write_output(result)
+            return result.returncode
+        return 0
+
+    def ver_status(self, cluster_name: str) -> int:
+        if not self._require_active(cluster_name):
+            return 1
+        if self._ensure_kubeconfig(cluster_name, quiet=True) != 0:
+            return 1
+        result = self._run(get_pods_args(str(self._kubeconfig(cluster_name))))
+        self._write_output(result)
+        return result.returncode
+
+    def ver_logs(self, cluster_name: str, key: str | None) -> int:
+        if not self._require_active(cluster_name):
+            return 1
+        if self._ensure_kubeconfig(cluster_name, quiet=True) != 0:
+            return 1
+        selector = f"app={key}" if key else None
+        self.write("Following logs. Ctrl+C returns to the menu.")
+        try:
+            result = self._run(
+                logs_follow_args(str(self._kubeconfig(cluster_name)), selector),
+                stream=True,
+            )
+        except KeyboardInterrupt:
+            self.write("")
+            return 0
+        if result.returncode in (0, 130):
+            return 0
+        self._write_output(result)
+        return result.returncode
 
     def derrubar_workload(self, cluster_name: str, key: str) -> int:
         if not self._require_active(cluster_name):
@@ -257,6 +312,17 @@ class Actions:
             return int(text)
         except ValueError:
             return None
+
+    def _scale_catalog(self, kubeconfig: str, replicas: int) -> bool:
+        failed = False
+        for workload in WORKLOADS:
+            result = self._run(scale_args(kubeconfig, workload.k8s_kind, workload.key, replicas))
+            if result.returncode != 0:
+                text = f"{result.stdout}\n{result.stderr}".lower()
+                if "not found" not in text:
+                    self._write_output(result)
+                    failed = True
+        return not failed
 
     def _scale_nodegroups(self, cluster_name: str, desired: int) -> int:
         names = self._nodegroup_names(cluster_name) or ["ng"]
@@ -855,10 +921,15 @@ class Actions:
         self._write_output(result)
         return False
 
-    def _ensure_kubeconfig(self, cluster_name: str) -> int:
+    def _retire_database_claim(self, kubeconfig: str, key: str) -> None:
+        self._run(delete_resource_args(kubeconfig, f"statefulset/{key}"))
+        self._run(delete_pvc_args(kubeconfig, f"data-{key}-0"))
+
+    def _ensure_kubeconfig(self, cluster_name: str, *, quiet: bool = False) -> int:
         kubeconfig = self._kubeconfig(cluster_name)
         kubeconfig.parent.mkdir(parents=True, exist_ok=True)
-        self.write("Updating kubeconfig.")
+        if not quiet:
+            self.write("Updating kubeconfig.")
         result = self._run(kubeconfig_args(self.settings.aws_region, cluster_name, str(kubeconfig)))
         if result.returncode != 0:
             self._write_output(result)

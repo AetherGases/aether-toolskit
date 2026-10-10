@@ -24,6 +24,8 @@ def _env():
         "MONGO_DB": "dbAether",
         "REDIS_PASSWORD": "rp",
         "JWT_SECRET": "jwt",
+        "OAUTH_ISSUER": "https://aethergases.org/hub",
+        "OAUTH_AUDIENCE": "https://aethergases.org/hub/aether-api/v1/mcp/",
         "GEMINI_API_KEY": "",
         "POSTGRES_HOST": "localhost",
     }
@@ -81,3 +83,5 @@ def test_defaults_and_secret_rewrite_hosts():
     assert data["MONGO_URI"].startswith("mongodb://mongo:mp@mongo:27017/dbAether")
     assert data["REDIS_URI"] == "redis://:rp@redis:6379/0"
     assert data["GEMINI_API_KEY"] == ""
+    assert data["OAUTH_ISSUER"] == "https://aethergases.org/hub"
+    assert data["OAUTH_AUDIENCE"] == "https://aethergases.org/hub/aether-api/v1/mcp/"

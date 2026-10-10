@@ -18,6 +18,8 @@ REQUIRED = (
     "MONGO_DB",
     "REDIS_PASSWORD",
     "JWT_SECRET",
+    "OAUTH_ISSUER",
+    "OAUTH_AUDIENCE",
 )
 
 EXCLUDED_FROM_SECRET = frozenset({

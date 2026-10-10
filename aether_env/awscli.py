@@ -280,6 +280,48 @@ def wait_cluster_deleted_args(region: str, cluster_name: str) -> list[str]:
     ]
 
 
+EBS_CSI_ADDON = "aws-ebs-csi-driver"
+EBS_CSI_POLICY_ARN = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+
+
+def describe_addon_args(region: str, cluster_name: str, addon_name: str = EBS_CSI_ADDON) -> list[str]:
+    return [
+        "aws", "eks", "describe-addon",
+        "--cluster-name", cluster_name,
+        "--addon-name", addon_name,
+        "--region", region,
+        "--query", "addon.status",
+        "--output", "text",
+    ]
+
+
+def create_addon_args(region: str, cluster_name: str, addon_name: str = EBS_CSI_ADDON) -> list[str]:
+    return [
+        "aws", "eks", "create-addon",
+        "--cluster-name", cluster_name,
+        "--addon-name", addon_name,
+        "--region", region,
+        "--resolve-conflicts", "OVERWRITE",
+    ]
+
+
+def wait_addon_active_args(region: str, cluster_name: str, addon_name: str = EBS_CSI_ADDON) -> list[str]:
+    return [
+        "aws", "eks", "wait", "addon-active",
+        "--cluster-name", cluster_name,
+        "--addon-name", addon_name,
+        "--region", region,
+    ]
+
+
+def attach_role_policy_args(role_name: str, policy_arn: str) -> list[str]:
+    return [
+        "aws", "iam", "attach-role-policy",
+        "--role-name", role_name,
+        "--policy-arn", policy_arn,
+    ]
+
+
 def kubeconfig_args(region: str, cluster_name: str, kubeconfig: str) -> list[str]:
     return [
         "aws", "eks", "update-kubeconfig",

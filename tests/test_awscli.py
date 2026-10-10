@@ -1,8 +1,10 @@
 from aether_env.awscli import (
     aws_process_env,
     cluster_config,
+    create_addon_args,
     create_cluster_args,
     delete_ecr_args,
+    describe_addon_args,
     describe_nodegroup_desired_size_args,
     ecr_repository,
     image_uri,
@@ -11,6 +13,7 @@ from aether_env.awscli import (
     list_eksctl_stack_names_args,
     stack_vpc_physical_id_args,
     update_nodegroup_scaling_args,
+    wait_addon_active_args,
     wait_nodegroup_active_args,
 )
 from aether_env.config import load_settings
@@ -26,6 +29,17 @@ def test_nodegroup_scaling_update_and_wait():
     assert "nodegroup.scalingConfig.desiredSize" in desired[desired.index("--query") + 1]
     wait = wait_nodegroup_active_args("sa-east-1", "aether-qa", "ng")
     assert wait[:4] == ["aws", "eks", "wait", "nodegroup-active"]
+
+
+def test_ebs_csi_addon_describe_create_and_wait():
+    describe = describe_addon_args("sa-east-1", "aether-qa")
+    assert describe[:3] == ["aws", "eks", "describe-addon"]
+    assert "aws-ebs-csi-driver" in describe
+    create = create_addon_args("sa-east-1", "aether-qa")
+    assert create[:3] == ["aws", "eks", "create-addon"]
+    assert "--resolve-conflicts" in create
+    wait = wait_addon_active_args("sa-east-1", "aether-qa")
+    assert wait[:4] == ["aws", "eks", "wait", "addon-active"]
 
 
 def test_create_cluster_uses_managed_nodegroup():
@@ -88,6 +102,8 @@ def test_ecr_names_and_env_do_not_keep_a_stale_session_token():
         "MONGO_DB": "db",
         "REDIS_PASSWORD": "rp",
         "JWT_SECRET": "jwt",
+        "OAUTH_ISSUER": "https://aethergases.org/hub",
+        "OAUTH_AUDIENCE": "https://aethergases.org/hub/aether-api/v1/mcp/",
     })
     env = aws_process_env(settings, {"AWS_SESSION_TOKEN": "old", "PATH": "/usr/bin"})
     assert "AWS_SESSION_TOKEN" not in env

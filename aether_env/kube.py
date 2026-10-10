@@ -40,6 +40,25 @@ def get_pods_args(kubeconfig: str) -> list[str]:
     return _base(kubeconfig) + ["-n", "aether", "get", "pods"]
 
 
+def delete_resource_args(kubeconfig: str, resource: str) -> list[str]:
+    return _base(kubeconfig) + ["-n", "aether", "delete", resource, "--ignore-not-found"]
+
+
+def delete_pvc_args(kubeconfig: str, name: str) -> list[str]:
+    return _base(kubeconfig) + ["-n", "aether", "delete", "pvc", name, "--ignore-not-found"]
+
+
+def logs_follow_args(kubeconfig: str, selector: str | None = None) -> list[str]:
+    args = _base(kubeconfig) + [
+        "-n", "aether", "logs", "-f",
+        "--all-containers", "--prefix", "--tail=100",
+        "-l", selector or "app",
+    ]
+    if selector is None:
+        args.append("--max-log-requests=20")
+    return args
+
+
 def ingress_nginx_rollout_status_args(kubeconfig: str) -> list[str]:
     return _base(kubeconfig) + [
         "-n", "ingress-nginx", "rollout", "status",

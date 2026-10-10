@@ -21,6 +21,9 @@ def test_qa_environment_is_blue_and_white():
     assert "Start environment" in text
     assert "Tear down environment" not in text
     assert "Scale to zero" in text
+    assert "Scale to one" in text
+    assert "Logs" in text
+    assert "Container status" in text
 
 
 def test_prod_environment_is_red_and_white():
@@ -29,7 +32,10 @@ def test_prod_environment_is_red_and_white():
     assert "\033[97m" in text
     assert "\033[94m" not in text
     assert "Scale to zero" in text
+    assert "Scale to one" in text
     assert "Tear down environment" not in text
+    assert "Logs" in text
+    assert "Container status" in text
 
 
 def test_frame_lines_have_single_border():
@@ -37,6 +43,7 @@ def test_frame_lines_have_single_border():
         MenuState("root"),
         MenuState("environment", "aether-qa"),
         MenuState("workloads", "aether-qa"),
+        MenuState("logs", "aether-qa"),
         MenuState("action", "aether-qa", "kong"),
     ):
         for line in render(state).splitlines():
@@ -56,17 +63,29 @@ def test_workloads_are_grouped_by_kind():
 def test_navigation_and_actions():
     qa = next_state(MenuState("root"), "1")
     assert qa == MenuState("environment", "aether-qa")
-    workloads = next_state(qa, "3")
+    workloads = next_state(qa, "4")
     assert workloads.screen == "workloads"
     auth = next_state(workloads, "2")
     assert auth.workload_key == "aether-ms-auth"
-    update = next_state(auth, "3")
+    update = next_state(auth, "4")
     assert update.action == "update"
     scale_env = next_state(qa, "2")
     assert scale_env == MenuState("run", "aether-qa", action="escalar-ambiente-zero")
+    scale_env_one = next_state(qa, "3")
+    assert scale_env_one == MenuState("run", "aether-qa", action="escalar-ambiente-um")
     scale_item = next_state(auth, "2")
     assert scale_item.action == "escalar-zero"
-    assert next_state(qa, "4") == qa
+    scale_item_one = next_state(auth, "3")
+    assert scale_item_one.action == "escalar-um"
+    logs = next_state(qa, "5")
+    assert logs == MenuState("logs", "aether-qa")
+    status = next_state(qa, "6")
+    assert status == MenuState("run", "aether-qa", action="status")
+    all_logs = next_state(logs, "1")
+    assert all_logs == MenuState("run", "aether-qa", action="logs")
+    kong_logs = next_state(logs, "2")
+    assert kong_logs == MenuState("run", "aether-qa", "kong", "logs")
+    assert next_state(logs, "0") == qa
     assert next_state(MenuState("root"), "0") is None
 
 
@@ -76,6 +95,30 @@ def test_action_menu_has_scale_to_zero_without_teardown():
     assert "Tear down" not in text
     assert "Update" in text
     assert "Scale to zero" in text
+    assert "Scale to one" in text
+
+
+def test_logs_menu_lists_all_then_workloads():
+    text = render(MenuState("logs", "aether-qa"))
+    assert "All" in text
+    assert "Kong Gateway" in text
+    assert "Postgres" in text
+    assert "Start" not in text
+
+
+def test_run_menu_returns_to_logs_after_follow():
+    seen = []
+    lines = iter(["1", "5", "1", "0", "0", "0"])
+    writes = []
+
+    def on_run(state):
+        seen.append(state.action)
+        return 0
+
+    code = run_menu(lambda: next(lines), writes.append, on_run)
+    assert code == 0
+    assert seen == ["logs"]
+    assert any("Logs" in item for item in writes)
 
 
 def test_run_menu_scale_to_zero_from_environment():

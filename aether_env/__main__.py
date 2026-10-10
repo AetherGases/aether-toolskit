@@ -40,10 +40,18 @@ def main(env: dict[str, str] | None = None) -> int:
             return actions.subir_ambiente(state.cluster_name or "")
         if state.action == "escalar-ambiente-zero":
             return actions.escalar_ambiente_zero(state.cluster_name or "")
+        if state.action == "escalar-ambiente-um":
+            return actions.escalar_ambiente_um(state.cluster_name or "")
+        if state.action == "status":
+            return actions.ver_status(state.cluster_name or "")
+        if state.action == "logs":
+            return actions.ver_logs(state.cluster_name or "", state.workload_key)
         if state.action == "subir":
             return actions.subir_workload(state.cluster_name or "", state.workload_key or "")
         if state.action == "escalar-zero":
             return actions.escalar_workload_zero(state.cluster_name or "", state.workload_key or "")
+        if state.action == "escalar-um":
+            return actions.escalar_workload_um(state.cluster_name or "", state.workload_key or "")
         if state.action == "update":
             return actions.update_workload(state.cluster_name or "", state.workload_key or "")
         return 1

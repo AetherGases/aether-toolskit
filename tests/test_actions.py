@@ -60,6 +60,8 @@ def _settings():
         "MONGO_DB": "dbAether",
         "REDIS_PASSWORD": "rp",
         "JWT_SECRET": "jwt",
+        "OAUTH_ISSUER": "https://aethergases.org/hub",
+        "OAUTH_AUDIENCE": "https://aethergases.org/hub/aether-api/v1/mcp/",
     })
 
 
@@ -132,6 +134,54 @@ def test_wrong_phrase_does_not_delete():
     actions = Actions(_settings(), runner, Path("."), lambda message: None)
     assert actions.derrubar_ambiente("aether-prod", "yes") == 1
     assert all("delete" not in call for call in runner.calls)
+
+
+def test_follow_logs_for_one_workload_and_all():
+    messages = []
+    runner = FakeRunner()
+    actions = Actions(_settings(), runner, Path("."), messages.append)
+    assert actions.ver_logs("aether-qa", "postgres") == 0
+    assert "Updating kubeconfig." not in messages
+    assert any(
+        call[0] == "kubectl" and "logs" in call and "-f" in call and "app=postgres" in call
+        for call in runner.calls
+    )
+    runner.calls.clear()
+    assert actions.ver_logs("aether-qa", None) == 0
+    assert any(
+        call[0] == "kubectl" and "logs" in call and "-f" in call
+        and call[call.index("-l") + 1] == "app"
+        for call in runner.calls
+    )
+
+
+def test_container_status_prints_pods():
+    messages = []
+
+    def pods(tup):
+        if tup[0] == "kubectl" and "get" in tup and "pods" in tup:
+            return CommandResult(tup, 0, "postgres-0   1/1   Running\n", "")
+        return None
+
+    runner = FakeRunner(scripted_fn=pods)
+    actions = Actions(_settings(), runner, Path("."), messages.append)
+    assert actions.ver_status("aether-qa") == 0
+    assert "Updating kubeconfig." not in messages
+    assert any("postgres-0" in message for message in messages)
+    assert any(call[0] == "kubectl" and "get" in call and "pods" in call for call in runner.calls)
+
+
+def test_stopped_environment_refuses_logs_and_status():
+    messages = []
+    runner = FakeRunner(describe_code=254, describe_stdout="")
+    actions = Actions(_settings(), runner, Path("."), messages.append)
+    assert actions.ver_logs("aether-qa", None) == 1
+    assert actions.ver_status("aether-qa") == 1
+    assert messages == [
+        "Environment is stopped. Start the environment first.",
+        "Environment is stopped. Start the environment first.",
+    ]
+    assert all(call[0] != "kubectl" or "logs" not in call for call in runner.calls)
 
 
 def test_stopped_environment_refuses_item_action():
@@ -393,6 +443,36 @@ def test_scale_environment_to_zero_scales_all_workloads():
     assert any("statefulset/postgres" in call and "--replicas=0" in call for call in scales)
 
 
+def test_scale_environment_to_one_restores_nodes_and_workloads():
+    runner = FakeRunner(scripted_fn=_nodegroup_script("0"))
+    actions = Actions(_settings(), runner, Path("."), lambda message: None)
+    assert actions.escalar_ambiente_um("aether-qa") == 0
+    assert any(
+        call[:3] == ("aws", "eks", "update-nodegroup-config")
+        and "desiredSize=1" in " ".join(call)
+        for call in runner.calls
+    )
+    scales = [call for call in runner.calls if call[0] == "kubectl" and "scale" in call]
+    assert any("deployment/kong" in call and "--replicas=1" in call for call in scales)
+    assert any("statefulset/postgres" in call and "--replicas=1" in call for call in scales)
+    node_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ("aws", "eks", "update-nodegroup-config"))
+    scale_at = next(i for i, call in enumerate(runner.calls) if call[0] == "kubectl" and "scale" in call)
+    assert node_at < scale_at
+    assert all(call[:2] != ("docker", "build") for call in runner.calls)
+
+
+def test_scale_workload_to_one_keeps_cluster():
+    runner = FakeRunner(scripted_fn=_nodegroup_script("1"))
+    actions = Actions(_settings(), runner, Path("."), lambda message: None)
+    assert actions.escalar_workload_um("aether-qa", "postgres") == 0
+    assert any(
+        "scale" in call and "statefulset/postgres" in call and "--replicas=1" in call
+        for call in runner.calls
+    )
+    assert all(call[:2] != ("docker", "build") for call in runner.calls)
+    assert all(call[:3] != ("aws", "eks", "delete-cluster") for call in runner.calls)
+
+
 def test_scale_workload_to_zero_keeps_cluster():
     runner = FakeRunner()
     actions = Actions(_settings(), runner, Path("."), lambda message: None)
@@ -456,6 +536,16 @@ def test_teardown_does_not_delete_ecr_or_kubeconfig(tmp_path):
     assert all(call[:3] != ("aws", "ecr", "delete-repository") for call in runner.calls)
     assert any(call[:3] == ("aws", "eks", "delete-nodegroup") for call in runner.calls)
     assert any(call[:3] == ("aws", "eks", "delete-cluster") for call in runner.calls)
+
+
+def test_database_start_uses_node_disk_not_ebs():
+    root = Path(__file__).resolve().parents[1]
+    runner = FakeRunner()
+    actions = Actions(_settings(), runner, root, lambda message: None)
+    assert actions.subir_workload("aether-qa", "postgres") == 0
+    assert all(call[:3] != ("aws", "eks", "create-addon") for call in runner.calls)
+    assert any(call[0] == "kubectl" and "delete" in call and "statefulset/postgres" in call for call in runner.calls)
+    assert any(call[0] == "kubectl" and "delete" in call and "data-postgres-0" in call for call in runner.calls)
 
 
 def test_subir_workload_prepares_kubeconfig_namespace_and_secret():
