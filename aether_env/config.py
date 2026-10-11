@@ -10,13 +10,19 @@ REQUIRED = (
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "AWS_REGION",
+    "POSTGRES_HOST",
+    "POSTGRES_PORT",
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
     "POSTGRES_DB_FIRST_YEAR",
     "POSTGRES_DB_SECOND_YEAR",
+    "MONGO_HOST",
+    "MONGO_PORT",
     "MONGO_USER",
     "MONGO_PASSWORD",
     "MONGO_DB",
+    "REDIS_HOST",
+    "REDIS_PORT",
     "REDIS_PASSWORD",
     "JWT_SECRET",
     "OAUTH_ISSUER",
@@ -118,6 +124,51 @@ def _valid_secret_key(key: str) -> bool:
     return bool(SECRET_KEY_RE.match(key))
 
 
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _postgres_ssl_query(sslmode: str) -> str:
+    mode = sslmode.strip()
+    if not mode:
+        return ""
+    return f"?sslmode={quote(mode, safe='')}"
+
+
+def _postgresql_url(
+    user: str,
+    password: str,
+    host: str,
+    port: str,
+    database: str,
+    sslmode: str,
+) -> str:
+    user_q = quote(user, safe="")
+    password_q = quote(password, safe="")
+    base = f"postgresql://{user_q}:{password_q}@{host}:{port}/{database}"
+    return base + _postgres_ssl_query(sslmode)
+
+
+def _jdbc_postgresql_url(host: str, port: str, database: str, sslmode: str) -> str:
+    base = f"jdbc:postgresql://{host}:{port}/{database}"
+    return base + _postgres_ssl_query(sslmode)
+
+
+def _mongodb_url(user: str, password: str, host: str, port: str, database: str) -> str:
+    user_q = quote(user, safe="")
+    password_q = quote(password, safe="")
+    return f"mongodb://{user_q}:{password_q}@{host}:{port}/{database}?authSource=admin"
+
+
+def _redis_url(password: str, host: str, port: str, *, tls: bool, user: str = "") -> str:
+    password_q = quote(password, safe="")
+    scheme = "rediss" if tls else "redis"
+    if user.strip():
+        user_q = quote(user.strip(), safe="")
+        return f"{scheme}://{user_q}:{password_q}@{host}:{port}/0"
+    return f"{scheme}://:{password_q}@{host}:{port}/0"
+
+
 def _secret_payload_size(data: Mapping[str, str]) -> int:
     return sum(len(k.encode("utf-8")) + len(v.encode("utf-8")) for k, v in data.items())
 
@@ -133,33 +184,57 @@ def application_secret_data(settings: Settings) -> dict[str, str]:
             )
         data[key] = value
 
-    user = quote(data["POSTGRES_USER"], safe="")
-    password = quote(data["POSTGRES_PASSWORD"], safe="")
-    mongo_user = quote(data["MONGO_USER"], safe="")
-    mongo_password = quote(data["MONGO_PASSWORD"], safe="")
-    redis_password = quote(data["REDIS_PASSWORD"], safe="")
+    pg_host = data["POSTGRES_HOST"].strip()
+    pg_port = data["POSTGRES_PORT"].strip()
+    mongo_host = data["MONGO_HOST"].strip()
+    mongo_port = data["MONGO_PORT"].strip()
+    redis_host = data["REDIS_HOST"].strip()
+    redis_port = data["REDIS_PORT"].strip()
+    sslmode = data.get("POSTGRES_SSLMODE", "")
     mongo_db = data["MONGO_DB"]
-    data["POSTGRES_HOST"] = "postgres"
-    data["POSTGRES_PORT"] = "5432"
-    data["MONGO_HOST"] = "mongo"
-    data["MONGO_PORT"] = "27017"
-    data["REDIS_HOST"] = "redis"
-    data["REDIS_PORT"] = "6379"
     data["API_PORT"] = "8080"
     data["SERVER_PORT"] = "8080"
     data["PORT"] = "8000"
     data["HOST"] = "0.0.0.0"
     data["DB_NAME"] = mongo_db
-    data["MONGO_URL"] = (
-        f"mongodb://{mongo_user}:{mongo_password}@mongo:27017/{mongo_db}?authSource=admin"
+    data["DATABASE_A_URL"] = _postgresql_url(
+        data["POSTGRES_USER"],
+        data["POSTGRES_PASSWORD"],
+        pg_host,
+        pg_port,
+        data["POSTGRES_DB_FIRST_YEAR"],
+        sslmode,
     )
-    data["MONGO_URI"] = data["MONGO_URL"]
-    data["REDIS_URI"] = f"redis://:{redis_password}@redis:6379/0"
-    data["DATABASE_A_URL"] = (
-        f"postgresql://{user}:{password}@postgres:5432/{data['POSTGRES_DB_FIRST_YEAR']}"
+    data["DATABASE_B_URL"] = _postgresql_url(
+        data["POSTGRES_USER"],
+        data["POSTGRES_PASSWORD"],
+        pg_host,
+        pg_port,
+        data["POSTGRES_DB_SECOND_YEAR"],
+        sslmode,
     )
-    data["DATABASE_B_URL"] = (
-        f"postgresql://{user}:{password}@postgres:5432/{data['POSTGRES_DB_SECOND_YEAR']}"
+    data["DB_URL"] = _jdbc_postgresql_url(
+        pg_host, pg_port, data["POSTGRES_DB_SECOND_YEAR"], sslmode
+    )
+    explicit_mongo = data.get("MONGO_URI", "").strip() or data.get("MONGO_URL", "").strip()
+    if explicit_mongo:
+        data["MONGO_URI"] = explicit_mongo
+        data["MONGO_URL"] = explicit_mongo
+    else:
+        data["MONGO_URL"] = _mongodb_url(
+            data["MONGO_USER"],
+            data["MONGO_PASSWORD"],
+            mongo_host,
+            mongo_port,
+            mongo_db,
+        )
+        data["MONGO_URI"] = data["MONGO_URL"]
+    data["REDIS_URI"] = _redis_url(
+        data["REDIS_PASSWORD"],
+        redis_host,
+        redis_port,
+        tls=_truthy(data.get("REDIS_TLS", "")),
+        user=data.get("REDIS_USER", ""),
     )
     data.pop("PROFILE_MS_BASE_URL", None)
     data["AUTH_MS_BASE_URL"] = "http://aether-ms-auth:8080"

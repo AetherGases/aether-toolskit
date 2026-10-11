@@ -152,38 +152,19 @@ def render(state: MenuState) -> str:
         ]
         return "\n".join([_frame(theme, theme.cluster_name, body), ""])
     if state.screen == "workloads":
-        app_lines = []
-        db_lines = []
-        for index, workload in enumerate(WORKLOADS, start=1):
-            line = _option(theme, str(index), workload.title)
-            if workload.kind == "database":
-                db_lines.append(line)
-            else:
-                app_lines.append(line)
-        body = [_blank(theme), _section(theme, "Applications"), *app_lines]
-        if db_lines:
-            body.extend([_blank(theme), _section(theme, "Databases"), *db_lines])
-        body.extend([_blank(theme), _back_line(theme)])
+        lines = [_option(theme, str(index), workload.title) for index, workload in enumerate(WORKLOADS, start=1)]
+        body = [_blank(theme), *lines, _blank(theme), _back_line(theme)]
         return "\n".join([_frame(theme, "Workloads", body), ""])
     if state.screen == "logs":
-        app_lines = []
-        db_lines = []
-        for index, workload in enumerate(WORKLOADS, start=2):
-            line = _option(theme, str(index), workload.title)
-            if workload.kind == "database":
-                db_lines.append(line)
-            else:
-                app_lines.append(line)
+        lines = [_option(theme, str(index), workload.title) for index, workload in enumerate(WORKLOADS, start=2)]
         body = [
             _blank(theme),
             _option(theme, "1", "All"),
             _blank(theme),
-            _section(theme, "Applications"),
-            *app_lines,
+            *lines,
+            _blank(theme),
+            _back_line(theme),
         ]
-        if db_lines:
-            body.extend([_blank(theme), _section(theme, "Databases"), *db_lines])
-        body.extend([_blank(theme), _back_line(theme)])
         return "\n".join([_frame(theme, "Logs", body), ""])
     body = [
         _blank(theme),

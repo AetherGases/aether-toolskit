@@ -3,7 +3,7 @@ from aether_env.confirm import phrase_accepted, required_phrase
 from aether_env.theme import PROD, QA
 
 
-def test_catalog_has_nine_apps_and_three_databases():
+def test_catalog_has_nine_apps():
     keys = [item.key for item in WORKLOADS]
     assert keys == [
         "kong",
@@ -15,13 +15,7 @@ def test_catalog_has_nine_apps_and_three_databases():
         "aether-rpa",
         "aether-web-flow",
         "aether-web-administrative",
-        "postgres",
-        "mongo",
-        "redis",
     ]
-    assert get_workload("postgres").image == "postgres:16.10"
-    assert get_workload("mongo").image == "mongo:8.0.13"
-    assert get_workload("redis").image == "redis:8.2"
     assert get_workload("aether-rpa").ingress_path is None
     assert get_workload("aether-web-flow").ingress_path is None
     assert get_workload("aether-ms-auth").dockerfile_in_repo is True

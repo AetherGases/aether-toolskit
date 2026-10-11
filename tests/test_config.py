@@ -16,19 +16,25 @@ def _env():
         "AWS_ACCESS_KEY_ID": "aki",
         "AWS_SECRET_ACCESS_KEY": "secret",
         "AWS_REGION": "sa-east-1",
+        "POSTGRES_HOST": "pg.example.com",
+        "POSTGRES_PORT": "5432",
         "POSTGRES_USER": "sa",
         "POSTGRES_PASSWORD": "p@ss",
         "POSTGRES_DB_FIRST_YEAR": "dbAether1Year",
         "POSTGRES_DB_SECOND_YEAR": "dbAether2Year",
+        "POSTGRES_SSLMODE": "require",
+        "MONGO_HOST": "mongo.example.com",
+        "MONGO_PORT": "27017",
         "MONGO_USER": "mongo",
         "MONGO_PASSWORD": "mp",
         "MONGO_DB": "dbAether",
+        "REDIS_HOST": "redis.example.com",
+        "REDIS_PORT": "6379",
         "REDIS_PASSWORD": "rp",
         "JWT_SECRET": "jwt",
         "OAUTH_ISSUER": "https://aethergases.org/hub",
         "OAUTH_AUDIENCE": "https://aethergases.org/hub/aether-api/v1/mcp/",
         "GEMINI_API_KEY": "",
-        "POSTGRES_HOST": "localhost",
     }
 
 
@@ -67,22 +73,26 @@ def test_invalid_secret_key_in_dotenv_raises():
         application_secret_data(settings)
 
 
-def test_defaults_and_secret_rewrite_hosts():
+def test_defaults_and_secret_builds_external_database_urls():
     settings = load_settings(_env())
     assert settings.node_type == "t3.medium"
     assert settings.node_count == 1
     assert settings.cluster_role_arn is None
     data = application_secret_data(settings)
     assert "AWS_SECRET_ACCESS_KEY" not in data
-    assert data["POSTGRES_HOST"] == "postgres"
+    assert data["POSTGRES_HOST"] == "pg.example.com"
     assert data["POSTGRES_PORT"] == "5432"
     assert data["API_PORT"] == "8080"
     assert data["SERVER_PORT"] == "8080"
     assert data["PORT"] == "8000"
-    assert data["DATABASE_A_URL"] == "postgresql://sa:p%40ss@postgres:5432/dbAether1Year"
-    assert data["DATABASE_B_URL"].endswith("/dbAether2Year")
-    assert data["MONGO_URI"].startswith("mongodb://mongo:mp@mongo:27017/dbAether")
-    assert data["REDIS_URI"] == "redis://:rp@redis:6379/0"
+    assert (
+        data["DATABASE_A_URL"]
+        == "postgresql://sa:p%40ss@pg.example.com:5432/dbAether1Year?sslmode=require"
+    )
+    assert data["DATABASE_B_URL"].endswith("/dbAether2Year?sslmode=require")
+    assert data["DB_URL"] == "jdbc:postgresql://pg.example.com:5432/dbAether2Year?sslmode=require"
+    assert data["MONGO_URI"].startswith("mongodb://mongo:mp@mongo.example.com:27017/dbAether")
+    assert data["REDIS_URI"] == "redis://:rp@redis.example.com:6379/0"
     assert data["GEMINI_API_KEY"] == ""
     assert data["OAUTH_ISSUER"] == "https://aethergases.org/hub"
     assert data["OAUTH_AUDIENCE"] == "https://aethergases.org/hub/aether-api/v1/mcp/"
@@ -97,6 +107,15 @@ def test_secret_fingerprint_changes_when_env_value_changes():
     dotenv["JWT_SECRET"] = "jwt-rotated"
     second = application_secret_fingerprint(application_secret_data(load_settings(_env(), app_env=dotenv)))
     assert first != second
+
+
+def test_explicit_mongo_uri_is_preserved():
+    dotenv = _env()
+    dotenv["MONGO_URI"] = "mongodb+srv://user:secret@cluster.example.net/dbAether"
+    settings = load_settings(_env(), app_env=dotenv)
+    data = application_secret_data(settings)
+    assert data["MONGO_URI"] == "mongodb+srv://user:secret@cluster.example.net/dbAether"
+    assert data["MONGO_URL"] == data["MONGO_URI"]
 
 
 def test_profile_ms_base_url_stripped_from_secret():

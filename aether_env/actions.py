@@ -73,12 +73,12 @@ from aether_env.kube import (
 )
 from aether_env.manifests import (
     render_app,
-    render_configmap,
-    render_database,
     render_ingress,
     render_namespace,
     render_secret,
 )
+
+_LEGACY_IN_CLUSTER_DATABASES = ("postgres", "mongo", "redis")
 from aether_env.theme import theme_for
 
 _REMOVABLE_STACK_STATUSES = frozenset({
@@ -174,25 +174,20 @@ class Actions:
             return 1
         workload = get_workload(key)
         kubeconfig = self._kubeconfig(cluster_name)
-        if workload.kind == "app":
-            account = self._account()
-            if account is None or self._login(account) != 0:
-                return 1
-            api_url = ""
-            if workload.key == "aether-web-flow":
-                address = self._wait_address(kubeconfig)
-                api_url = f"http://{address}" if address else ""
-            image_tag = self._publish_image(cluster_name, workload, account, api_url)
-            if image_tag is None:
-                self.write(f"Failed to build {key}.")
-                return 1
-            image = self._image(account, theme_for(cluster_name).slug, key, image_tag)
-            if not self._apply_checked(kubeconfig, render_app(workload, image, self._env_fingerprint())):
-                return 1
-        else:
-            self._retire_database_claim(str(kubeconfig), key)
-            if not self._apply_checked(kubeconfig, render_database(workload, self._env_fingerprint())):
-                return 1
+        account = self._account()
+        if account is None or self._login(account) != 0:
+            return 1
+        api_url = ""
+        if workload.key == "aether-web-flow":
+            address = self._wait_address(kubeconfig)
+            api_url = f"http://{address}" if address else ""
+        image_tag = self._publish_image(cluster_name, workload, account, api_url)
+        if image_tag is None:
+            self.write(f"Failed to build {key}.")
+            return 1
+        image = self._image(account, theme_for(cluster_name).slug, key, image_tag)
+        if not self._apply_checked(kubeconfig, render_app(workload, image, self._env_fingerprint())):
+            return 1
         scaled = self._run(scale_args(str(kubeconfig), workload.k8s_kind, key, 1))
         if scaled.returncode != 0:
             self._write_output(scaled)
@@ -302,14 +297,6 @@ class Actions:
         kubeconfig_path = self._kubeconfig(cluster_name)
         workload = get_workload(key)
         kubeconfig = str(kubeconfig_path)
-        if workload.kind == "database":
-            if self._apply_application_secret(kubeconfig_path) != 0:
-                return 1
-            if not self._apply_checked(
-                kubeconfig_path, render_database(workload, self._env_fingerprint())
-            ):
-                return 1
-            return self._run(rollout_status_args(kubeconfig, "statefulset", key)).returncode
         if self._apply_application_secret(kubeconfig_path) != 0:
             return 1
         account = self._account()
@@ -963,9 +950,12 @@ class Actions:
         self._write_output(result)
         return False
 
-    def _retire_database_claim(self, kubeconfig: str, key: str) -> None:
-        self._run(delete_resource_args(kubeconfig, f"statefulset/{key}"))
-        self._run(delete_pvc_args(kubeconfig, f"data-{key}-0"))
+    def _retire_in_cluster_databases(self, kubeconfig: str) -> None:
+        for key in _LEGACY_IN_CLUSTER_DATABASES:
+            self._run(delete_resource_args(kubeconfig, f"statefulset/{key}"))
+            self._run(delete_pvc_args(kubeconfig, f"data-{key}-0"))
+        for name in ("postgres-init", "mongo-init"):
+            self._run(delete_resource_args(kubeconfig, f"configmap/{name}"))
 
     def _ensure_kubeconfig(self, cluster_name: str, *, quiet: bool = False) -> int:
         kubeconfig = self._kubeconfig(cluster_name)
@@ -993,18 +983,12 @@ class Actions:
 
     def _ensure_platform(self, cluster_name: str) -> int:
         kubeconfig = self._kubeconfig(cluster_name)
-        self.write("Applying namespace, secrets, and init data.")
+        self.write("Applying namespace and secrets.")
         if not self._apply_checked(kubeconfig, render_namespace()):
             return 1
         if self._apply_application_secret(kubeconfig) != 0:
             return 1
-        postgres_init = self._read_dir(self.root / "init-postgres")
-        if not self._apply_checked(kubeconfig, render_configmap("postgres-init", postgres_init)):
-            return 1
-        mongo_path = self.root / "init-mongo" / "init.js"
-        mongo = mongo_path.read_text(encoding="utf-8") if mongo_path.exists() else ""
-        if not self._apply_checked(kubeconfig, render_configmap("mongo-init", {"init.js": mongo})):
-            return 1
+        self._retire_in_cluster_databases(str(kubeconfig))
         return 0
 
     def _ensure_gateway(self, cluster_name: str) -> int:

@@ -52,12 +52,11 @@ def test_frame_lines_have_single_border():
             assert line.count("│") == 2
 
 
-def test_workloads_are_grouped_by_kind():
+def test_workloads_lists_catalog_in_order():
     text = render(MenuState("workloads", "aether-qa"))
-    assert f"{QA.dim}Applications{QA.reset}" in text
-    assert f"{QA.dim}Databases{QA.reset}" in text
-    assert text.index("Applications") < text.index("Kong Gateway")
-    assert text.index("Databases") < text.index("Postgres")
+    assert "Kong Gateway" in text
+    assert "Postgres" not in text
+    assert text.index("Kong Gateway") < text.index("aether-ms-auth")
 
 
 def test_navigation_and_actions():
@@ -102,7 +101,7 @@ def test_logs_menu_lists_all_then_workloads():
     text = render(MenuState("logs", "aether-qa"))
     assert "All" in text
     assert "Kong Gateway" in text
-    assert "Postgres" in text
+    assert "aether-ms-auth" in text
     assert "Start" not in text
 
 
