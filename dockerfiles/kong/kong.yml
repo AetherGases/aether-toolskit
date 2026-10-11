@@ -40,12 +40,12 @@ services:
     routes:
       - name: aether-web-administrative-route
         paths:
-          - /admin
+          - /
         strip_path: true
   - name: aether-web-flow
     url: http://aether-web-flow.aether.svc.cluster.local:80
     routes:
       - name: aether-web-flow-route
         paths:
-          - /
+          - /dashboard
         strip_path: false

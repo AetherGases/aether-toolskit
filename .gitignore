@@ -28,3 +28,4 @@ TestResults.xml
 resources/
 
 .__pycache__/*
+.aether_env/__pycache__/*
