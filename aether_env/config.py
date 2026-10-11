@@ -1,3 +1,4 @@
+import hashlib
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -171,3 +172,13 @@ def application_secret_data(settings: Settings) -> dict[str, str]:
             "Remove large values from .env."
         )
     return ordered
+
+
+def application_secret_fingerprint(data: Mapping[str, str]) -> str:
+    digest = hashlib.sha256()
+    for key, value in sorted(data.items()):
+        digest.update(key.encode())
+        digest.update(b"\0")
+        digest.update(str(value).encode())
+        digest.update(b"\0")
+    return digest.hexdigest()[:12]

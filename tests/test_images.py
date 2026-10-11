@@ -1,7 +1,13 @@
 from pathlib import Path
 
 from aether_env.catalog import get_workload
-from aether_env.images import docker_build_args, docker_context_content_sha, dockerfile_for, sync_main_commands
+from aether_env.images import (
+    combined_deploy_sha,
+    docker_build_args,
+    docker_context_content_sha,
+    dockerfile_for,
+    sync_main_commands,
+)
 
 
 def test_sync_clones_main_or_fetches_it():
@@ -11,6 +17,17 @@ def test_sync_clones_main_or_fetches_it():
     assert "main" in update[0]
     assert update[0][:5] == ["git", "-C", "C:/src", "fetch", "--depth"]
     assert update[1][-1] == "FETCH_HEAD"
+
+
+def test_combined_deploy_sha_includes_toolkit_context(tmp_path):
+    context = tmp_path / "ms-aeko-hub"
+    context.mkdir()
+    (context / "Dockerfile").write_text("FROM python\n", encoding="utf-8")
+    first = combined_deploy_sha("abc123", context)
+    (context / "Dockerfile").write_text("FROM python:3.12\n", encoding="utf-8")
+    second = combined_deploy_sha("abc123", context)
+    assert first != second
+    assert combined_deploy_sha("abc123", None) == combined_deploy_sha("abc123", None)
 
 
 def test_docker_context_content_sha_changes_when_context_changes(tmp_path):

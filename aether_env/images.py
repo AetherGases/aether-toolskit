@@ -34,6 +34,20 @@ def docker_context_content_sha(context_dir: Path) -> str:
     return digest.hexdigest()[:12]
 
 
+def combined_deploy_sha(
+    git_sha: str,
+    toolkit_context_dir: Path | None,
+    *,
+    extra: str = "",
+) -> str:
+    parts = [git_sha.strip()]
+    if toolkit_context_dir is not None:
+        parts.append(docker_context_content_sha(toolkit_context_dir))
+    if extra:
+        parts.append(extra)
+    return hashlib.sha256("\0".join(parts).encode()).hexdigest()[:12]
+
+
 def docker_build_args(dockerfile: str, context: str, tags: list[str], build_args: Mapping[str, str]) -> list[str]:
     command = ["docker", "build", "-f", dockerfile]
     for key, value in build_args.items():

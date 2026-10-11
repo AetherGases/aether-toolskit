@@ -3,7 +3,7 @@ from aether_env.kong import KONG_ROUTES, render_kong_config
 
 def test_kong_routes_cover_all_public_backends():
     paths = {route.path for route in KONG_ROUTES}
-    assert paths == {"/auth", "/calculator", "/inventory", "/cloudinary", "/hub", "/admin", "/"}
+    assert paths == {"/auth", "/calculator", "/inventory", "/cloudinary", "/hub", "/", "/dashboard"}
 
 
 def test_render_kong_config_declares_services_and_strip_path():
@@ -14,4 +14,4 @@ def test_render_kong_config_declares_services_and_strip_path():
     assert "http://aether-ms-auth.aether.svc.cluster.local:8080" in text
     assert "http://ms-aeko-hub.aether.svc.cluster.local:8000" in text
     assert "paths:" in text
-    assert "          - /\n        strip_path: false" in text
+    assert "          - /dashboard\n        strip_path: false" in text

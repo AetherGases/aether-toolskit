@@ -3,6 +3,14 @@ from collections.abc import Mapping, Sequence
 
 from aether_env.catalog import Workload
 
+ENV_FINGERPRINT_ANNOTATION = "aether.toolskit/env-fingerprint"
+
+
+def _env_annotation_block(fingerprint: str) -> str:
+    return f"""      annotations:
+        {ENV_FINGERPRINT_ANNOTATION}: "{fingerprint}"
+"""
+
 
 def render_namespace() -> str:
     return "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: aether\n"
@@ -64,7 +72,7 @@ def _probe(port: int) -> str:
 """
 
 
-def render_database(workload: Workload) -> str:
+def render_database(workload: Workload, env_fingerprint: str) -> str:
     if workload.key == "postgres":
         container = """        - name: postgres
           image: postgres:16.10
@@ -165,7 +173,7 @@ spec:
     metadata:
       labels:
         app: {workload.key}
-    spec:
+{_env_annotation_block(env_fingerprint)}    spec:
       securityContext:
         fsGroup: 999
       containers:
@@ -175,7 +183,7 @@ spec:
     return body
 
 
-def render_app(workload: Workload, image: str) -> str:
+def render_app(workload: Workload, image: str, env_fingerprint: str) -> str:
     ports = ""
     probe = ""
     if workload.container_port:
@@ -199,7 +207,7 @@ spec:
     metadata:
       labels:
         app: {workload.key}
-    spec:
+{_env_annotation_block(env_fingerprint)}    spec:
       containers:
         - name: {workload.key}
           image: {image}

@@ -37,9 +37,15 @@ from aether_env.awscli import (
     kubeconfig_args,
 )
 from aether_env.catalog import WORKLOADS, get_workload
-from aether_env.config import SecretConfigError, Settings, application_secret_data
+from aether_env.config import (
+    SecretConfigError,
+    Settings,
+    application_secret_data,
+    application_secret_fingerprint,
+)
 from aether_env.confirm import phrase_accepted
 from aether_env.images import (
+    combined_deploy_sha,
     docker_build_args,
     docker_context_content_sha,
     docker_push_args,
@@ -61,6 +67,7 @@ from aether_env.kube import (
     ingress_ip_args,
     ingress_nginx_rollout_status_args,
     rollout_restart_args,
+    rollout_restart_deployment_args,
     rollout_status_args,
     scale_args,
 )
@@ -180,11 +187,11 @@ class Actions:
                 self.write(f"Failed to build {key}.")
                 return 1
             image = self._image(account, theme_for(cluster_name).slug, key, image_tag)
-            if not self._apply_checked(kubeconfig, render_app(workload, image)):
+            if not self._apply_checked(kubeconfig, render_app(workload, image, self._env_fingerprint())):
                 return 1
         else:
             self._retire_database_claim(str(kubeconfig), key)
-            if not self._apply_checked(kubeconfig, render_database(workload)):
+            if not self._apply_checked(kubeconfig, render_database(workload, self._env_fingerprint())):
                 return 1
         scaled = self._run(scale_args(str(kubeconfig), workload.k8s_kind, key, 1))
         if scaled.returncode != 0:
@@ -216,9 +223,12 @@ class Actions:
             return 1
         if self._ensure_kubeconfig(cluster_name) != 0:
             return 1
+        kubeconfig_path = self._kubeconfig(cluster_name)
+        if self._apply_application_secret(kubeconfig_path) != 0:
+            return 1
         if self._scale_nodegroups(cluster_name, self.settings.node_count) != 0:
             return 1
-        kubeconfig = str(self._kubeconfig(cluster_name))
+        kubeconfig = str(kubeconfig_path)
         if not self._scale_catalog(kubeconfig, 1):
             return 1
         self.write("Scaled to one.")
@@ -232,11 +242,14 @@ class Actions:
             return 1
         if self._ensure_kubeconfig(cluster_name) != 0:
             return 1
+        kubeconfig_path = self._kubeconfig(cluster_name)
+        if self._apply_application_secret(kubeconfig_path) != 0:
+            return 1
         if self._scale_nodegroups(cluster_name, self.settings.node_count) != 0:
             return 1
         workload = get_workload(key)
         result = self._run(
-            scale_args(str(self._kubeconfig(cluster_name)), workload.k8s_kind, key, 1)
+            scale_args(str(kubeconfig_path), workload.k8s_kind, key, 1)
         )
         if result.returncode != 0:
             self._write_output(result)
@@ -286,19 +299,25 @@ class Actions:
             return 1
         if self._ensure_kubeconfig(cluster_name) != 0:
             return 1
+        kubeconfig_path = self._kubeconfig(cluster_name)
         workload = get_workload(key)
-        kubeconfig = str(self._kubeconfig(cluster_name))
+        kubeconfig = str(kubeconfig_path)
         if workload.kind == "database":
-            restarted = self._run(rollout_restart_args(kubeconfig, key))
-            if restarted.returncode != 0:
-                return restarted.returncode
+            if self._apply_application_secret(kubeconfig_path) != 0:
+                return 1
+            if not self._apply_checked(
+                kubeconfig_path, render_database(workload, self._env_fingerprint())
+            ):
+                return 1
             return self._run(rollout_status_args(kubeconfig, "statefulset", key)).returncode
+        if self._apply_application_secret(kubeconfig_path) != 0:
+            return 1
         account = self._account()
         if account is None or self._login(account) != 0:
             return 1
         api_url = ""
         if workload.key == "aether-web-flow":
-            address = self._wait_address(self._kubeconfig(cluster_name))
+            address = self._wait_address(kubeconfig_path)
             api_url = f"http://{address}" if address else ""
         image_tag = self._publish_image(cluster_name, workload, account, api_url)
         if image_tag is None:
@@ -307,8 +326,11 @@ class Actions:
         image = self._image(account, theme_for(cluster_name).slug, key, image_tag)
         self.write(f"Deploying {image}")
         self._run(delete_failed_pods_args(kubeconfig))
-        if not self._apply_checked(self._kubeconfig(cluster_name), render_app(workload, image)):
+        if not self._apply_checked(kubeconfig_path, render_app(workload, image, self._env_fingerprint())):
             return 1
+        restarted = self._run(rollout_restart_deployment_args(kubeconfig, key))
+        if restarted.returncode != 0:
+            return restarted.returncode
         return self._run(rollout_status_args(kubeconfig, "deployment", key)).returncode
 
     def _desired_node_size(self, cluster_name: str, nodegroup_name: str) -> int | None:
@@ -899,9 +921,15 @@ class Actions:
             parsed = self._run(rev_parse_args(str(dest)))
             if parsed.returncode != 0:
                 return None
-            sha = parsed.stdout.strip()
-            if not sha:
+            git_sha = parsed.stdout.strip()
+            if not git_sha:
                 return None
+            if workload.dockerfile_in_repo:
+                sha = git_sha
+            else:
+                toolkit_dir = dockerfile_for(self.root, workload, dest).parent
+                extra = api_url if workload.key == "aether-web-flow" else ""
+                sha = combined_deploy_sha(git_sha, toolkit_dir, extra=extra)
         deploy_tag = f"{branch}-{sha}"
         tags = [
             self._image(account, theme_for(cluster_name).slug, workload.key, deploy_tag),
@@ -950,17 +978,25 @@ class Actions:
             return 1
         return 0
 
-    def _ensure_platform(self, cluster_name: str) -> int:
-        kubeconfig = self._kubeconfig(cluster_name)
-        self.write("Applying namespace, secrets, and init data.")
-        if not self._apply_checked(kubeconfig, render_namespace()):
-            return 1
+    def _env_fingerprint(self) -> str:
+        return application_secret_fingerprint(application_secret_data(self.settings))
+
+    def _apply_application_secret(self, kubeconfig: Path) -> int:
         try:
             secret_manifest = render_secret(application_secret_data(self.settings))
         except SecretConfigError as exc:
             self.write(str(exc))
             return 1
         if not self._apply_checked(kubeconfig, secret_manifest):
+            return 1
+        return 0
+
+    def _ensure_platform(self, cluster_name: str) -> int:
+        kubeconfig = self._kubeconfig(cluster_name)
+        self.write("Applying namespace, secrets, and init data.")
+        if not self._apply_checked(kubeconfig, render_namespace()):
+            return 1
+        if self._apply_application_secret(kubeconfig) != 0:
             return 1
         postgres_init = self._read_dir(self.root / "init-postgres")
         if not self._apply_checked(kubeconfig, render_configmap("postgres-init", postgres_init)):

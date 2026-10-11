@@ -198,7 +198,7 @@ def test_database_update_restarts_and_skips_docker():
     actions = Actions(_settings(), runner, Path("."), lambda message: None)
     assert actions.update_workload("aether-qa", "postgres") == 0
     flat = [" ".join(call) for call in runner.calls]
-    assert any(item.startswith("kubectl") and "rollout restart statefulset/postgres" in item for item in flat)
+    assert any(item.startswith("kubectl") and "rollout status statefulset/postgres" in item for item in flat)
     assert all(not item.startswith("docker build") for item in flat)
 
 
@@ -213,7 +213,8 @@ def test_app_update_applies_image_and_restarts_deployment():
     )
     flat = [" ".join(call) for call in runner.calls]
     assert any("status.phase=Failed" in item for item in flat)
-    assert not any("rollout restart deployment/ms-aeko-hub" in item for item in flat)
+    assert any("rollout restart deployment/ms-aeko-hub" in item for item in flat)
+    assert any("rollout status deployment/ms-aeko-hub" in item for item in flat)
 
 
 def test_active_cluster_skips_eksctl_create_even_with_stack():

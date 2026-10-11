@@ -5,6 +5,7 @@ from aether_env.config import (
     ConfigError,
     SecretConfigError,
     application_secret_data,
+    application_secret_fingerprint,
     load_settings,
     read_dotenv,
 )
@@ -87,6 +88,15 @@ def test_defaults_and_secret_rewrite_hosts():
     assert data["OAUTH_AUDIENCE"] == "https://aethergases.org/hub/aether-api/v1/mcp/"
     assert data["AUTH_MS_BASE_URL"] == "http://aether-ms-auth:8080"
     assert "PROFILE_MS_BASE_URL" not in data
+
+
+def test_secret_fingerprint_changes_when_env_value_changes():
+    settings = load_settings(_env())
+    first = application_secret_fingerprint(application_secret_data(settings))
+    dotenv = _env()
+    dotenv["JWT_SECRET"] = "jwt-rotated"
+    second = application_secret_fingerprint(application_secret_data(load_settings(_env(), app_env=dotenv)))
+    assert first != second
 
 
 def test_profile_ms_base_url_stripped_from_secret():
