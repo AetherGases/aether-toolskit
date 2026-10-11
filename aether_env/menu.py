@@ -14,6 +14,7 @@ class MenuState:
     cluster_name: str | None = None
     workload_key: str | None = None
     action: str | None = None
+    replicas: int | None = None
 
 
 def next_state(state: MenuState, choice: str) -> MenuState | None:
@@ -30,26 +31,13 @@ def next_state(state: MenuState, choice: str) -> MenuState | None:
         if choice == "1":
             return MenuState("run", state.cluster_name, action="subir-ambiente")
         if choice == "2":
-            return MenuState("run", state.cluster_name, action="escalar-ambiente-zero")
+            return MenuState("scale_prompt", state.cluster_name)
         if choice == "3":
-            return MenuState("run", state.cluster_name, action="escalar-ambiente-um")
-        if choice == "4":
             return MenuState("workloads", state.cluster_name)
-        if choice == "5":
-            return MenuState("logs", state.cluster_name)
-        if choice == "6":
+        if choice == "4":
             return MenuState("run", state.cluster_name, action="status")
         if choice == "0":
             return MenuState("root")
-        return state
-    if state.screen == "logs":
-        if choice == "0":
-            return MenuState("environment", state.cluster_name)
-        if choice == "1":
-            return MenuState("run", state.cluster_name, action="logs")
-        if choice.isdigit() and 2 <= int(choice) <= len(WORKLOADS) + 1:
-            workload = WORKLOADS[int(choice) - 2]
-            return MenuState("run", state.cluster_name, workload.key, "logs")
         return state
     if state.screen == "workloads":
         if choice == "0":
@@ -59,9 +47,14 @@ def next_state(state: MenuState, choice: str) -> MenuState | None:
             return MenuState("action", state.cluster_name, workload.key)
         return state
     if state.screen == "action":
-        actions = {"1": "subir", "2": "escalar-zero", "3": "escalar-um", "4": "update"}
-        if choice in actions:
-            return MenuState("run", state.cluster_name, state.workload_key, actions[choice])
+        if choice == "1":
+            return MenuState("run", state.cluster_name, state.workload_key, "subir")
+        if choice == "2":
+            return MenuState("scale_prompt", state.cluster_name, state.workload_key)
+        if choice == "3":
+            return MenuState("run", state.cluster_name, state.workload_key, "update")
+        if choice == "4":
+            return MenuState("run", state.cluster_name, state.workload_key, "logs")
         if choice == "0":
             return MenuState("workloads", state.cluster_name)
         return state
@@ -142,40 +135,43 @@ def render(state: MenuState) -> str:
         body = [
             _blank(theme),
             _option(theme, "1", "Start environment"),
-            _option(theme, "2", "Scale to zero"),
-            _option(theme, "3", "Scale to one"),
-            _option(theme, "4", "Choose workload"),
-            _option(theme, "5", "Logs"),
-            _option(theme, "6", "Container status"),
+            _option(theme, "2", "Scale to"),
+            _option(theme, "3", "Choose workload"),
+            _option(theme, "4", "Container status"),
             _blank(theme),
             _back_line(theme),
         ]
         return "\n".join([_frame(theme, theme.cluster_name, body), ""])
+    if state.screen == "scale_prompt":
+        target = "all workloads" if not state.workload_key else state.workload_key
+        body = [
+            _blank(theme),
+            _line(f"  {theme.text}Replica count for {target}:{theme.reset}"),
+            _line(f"  {theme.dim}Enter a number (0 stops pods).{theme.reset}"),
+            _blank(theme),
+        ]
+        return "\n".join([_frame(theme, "Scale to", body), ""])
     if state.screen == "workloads":
         lines = [_option(theme, str(index), workload.title) for index, workload in enumerate(WORKLOADS, start=1)]
         body = [_blank(theme), *lines, _blank(theme), _back_line(theme)]
         return "\n".join([_frame(theme, "Workloads", body), ""])
-    if state.screen == "logs":
-        lines = [_option(theme, str(index), workload.title) for index, workload in enumerate(WORKLOADS, start=2)]
-        body = [
-            _blank(theme),
-            _option(theme, "1", "All"),
-            _blank(theme),
-            *lines,
-            _blank(theme),
-            _back_line(theme),
-        ]
-        return "\n".join([_frame(theme, "Logs", body), ""])
     body = [
         _blank(theme),
         _option(theme, "1", "Start"),
-        _option(theme, "2", "Scale to zero"),
-        _option(theme, "3", "Scale to one"),
-        _option(theme, "4", "Update"),
+        _option(theme, "2", "Scale to"),
+        _option(theme, "3", "Update"),
+        _option(theme, "4", "Logs"),
         _blank(theme),
         _back_line(theme),
     ]
     return "\n".join([_frame(theme, state.workload_key or "", body), ""])
+
+
+def _parse_replica_count(text: str) -> int | None:
+    stripped = text.strip()
+    if not stripped.isdigit():
+        return None
+    return int(stripped)
 
 
 def run_menu(read_line: Callable[[], str], write: Callable[[str], None], on_run: Callable[[MenuState], int]) -> int:
@@ -186,14 +182,37 @@ def run_menu(read_line: Callable[[], str], write: Callable[[str], None], on_run:
             cluster_name = state.cluster_name
             workload_key = state.workload_key
             on_run(state)
-            if action == "logs":
-                state = MenuState("logs", cluster_name)
-            elif workload_key:
+            if workload_key:
                 state = MenuState("action", cluster_name, workload_key)
             else:
                 state = MenuState("environment", cluster_name)
             continue
         write(render(state))
         choice = read_line()
+        if state.screen == "scale_prompt":
+            if not choice.strip():
+                if state.workload_key:
+                    state = MenuState("action", state.cluster_name, state.workload_key)
+                else:
+                    state = MenuState("environment", state.cluster_name)
+                continue
+            replicas = _parse_replica_count(choice)
+            if replicas is None:
+                continue
+            action = "escalar-workload" if state.workload_key else "escalar-ambiente"
+            on_run(
+                MenuState(
+                    "run",
+                    state.cluster_name,
+                    state.workload_key,
+                    action,
+                    replicas=replicas,
+                )
+            )
+            if state.workload_key:
+                state = MenuState("action", state.cluster_name, state.workload_key)
+            else:
+                state = MenuState("environment", state.cluster_name)
+            continue
         state = next_state(state, choice)
     return 0

@@ -199,6 +199,27 @@ class Actions:
             self.write(pods.stdout)
         return 0
 
+    def escalar_ambiente(self, cluster_name: str, replicas: int) -> int:
+        if replicas < 0:
+            self.write("Replica count must be 0 or greater.")
+            return 1
+        if replicas == 0:
+            return self.escalar_ambiente_zero(cluster_name)
+        if not self._require_active(cluster_name):
+            return 1
+        if self._ensure_kubeconfig(cluster_name) != 0:
+            return 1
+        kubeconfig_path = self._kubeconfig(cluster_name)
+        if self._apply_application_secret(kubeconfig_path) != 0:
+            return 1
+        if self._scale_nodegroups(cluster_name, self.settings.node_count) != 0:
+            return 1
+        kubeconfig = str(kubeconfig_path)
+        if not self._scale_catalog(kubeconfig, replicas):
+            return 1
+        self.write(f"Scaled all workloads to {replicas}.")
+        return 0
+
     def escalar_ambiente_zero(self, cluster_name: str) -> int:
         if not self._require_active(cluster_name):
             return 1
@@ -214,25 +235,14 @@ class Actions:
         return 0
 
     def escalar_ambiente_um(self, cluster_name: str) -> int:
-        if not self._require_active(cluster_name):
-            return 1
-        if self._ensure_kubeconfig(cluster_name) != 0:
-            return 1
-        kubeconfig_path = self._kubeconfig(cluster_name)
-        if self._apply_application_secret(kubeconfig_path) != 0:
-            return 1
-        if self._scale_nodegroups(cluster_name, self.settings.node_count) != 0:
-            return 1
-        kubeconfig = str(kubeconfig_path)
-        if not self._scale_catalog(kubeconfig, 1):
-            return 1
-        self.write("Scaled to one.")
-        return 0
+        return self.escalar_ambiente(cluster_name, 1)
 
-    def escalar_workload_zero(self, cluster_name: str, key: str) -> int:
-        return self.derrubar_workload(cluster_name, key)
-
-    def escalar_workload_um(self, cluster_name: str, key: str) -> int:
+    def escalar_workload(self, cluster_name: str, key: str, replicas: int) -> int:
+        if replicas < 0:
+            self.write("Replica count must be 0 or greater.")
+            return 1
+        if replicas == 0:
+            return self.derrubar_workload(cluster_name, key)
         if not self._require_active(cluster_name):
             return 1
         if self._ensure_kubeconfig(cluster_name) != 0:
@@ -244,12 +254,18 @@ class Actions:
             return 1
         workload = get_workload(key)
         result = self._run(
-            scale_args(str(kubeconfig_path), workload.k8s_kind, key, 1)
+            scale_args(str(kubeconfig_path), workload.k8s_kind, key, replicas)
         )
         if result.returncode != 0:
             self._write_output(result)
             return result.returncode
         return 0
+
+    def escalar_workload_zero(self, cluster_name: str, key: str) -> int:
+        return self.escalar_workload(cluster_name, key, 0)
+
+    def escalar_workload_um(self, cluster_name: str, key: str) -> int:
+        return self.escalar_workload(cluster_name, key, 1)
 
     def ver_status(self, cluster_name: str) -> int:
         if not self._require_active(cluster_name):
