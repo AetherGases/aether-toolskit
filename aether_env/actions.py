@@ -39,7 +39,14 @@ from aether_env.awscli import (
 from aether_env.catalog import WORKLOADS, get_workload
 from aether_env.config import SecretConfigError, Settings, application_secret_data
 from aether_env.confirm import phrase_accepted
-from aether_env.images import docker_build_args, docker_push_args, dockerfile_for, rev_parse_args, sync_main_commands
+from aether_env.images import (
+    docker_build_args,
+    docker_context_content_sha,
+    docker_push_args,
+    dockerfile_for,
+    rev_parse_args,
+    sync_main_commands,
+)
 from aether_env.kong import render_kong_config
 from aether_env.kube import (
     INGRESS_NGINX_URL,
@@ -883,7 +890,7 @@ class Actions:
             dest = self.root / "dockerfiles" / workload.key
             if workload.key == "kong":
                 (dest / "kong.yml").write_text(render_kong_config(), encoding="utf-8")
-            sha = "local"
+            sha = docker_context_content_sha(dest)
         else:
             dest = self.root / "resources" / "build" / cluster_name / workload.repo
             for command in sync_main_commands(workload.repo, str(dest), dest.exists(), branch):

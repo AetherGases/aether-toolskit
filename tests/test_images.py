@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from aether_env.catalog import get_workload
-from aether_env.images import docker_build_args, dockerfile_for, sync_main_commands
+from aether_env.images import docker_build_args, docker_context_content_sha, dockerfile_for, sync_main_commands
 
 
 def test_sync_clones_main_or_fetches_it():
@@ -11,6 +11,18 @@ def test_sync_clones_main_or_fetches_it():
     assert "main" in update[0]
     assert update[0][:5] == ["git", "-C", "C:/src", "fetch", "--depth"]
     assert update[1][-1] == "FETCH_HEAD"
+
+
+def test_docker_context_content_sha_changes_when_context_changes(tmp_path):
+    context = tmp_path / "kong"
+    context.mkdir()
+    (context / "Dockerfile").write_text("FROM kong\n", encoding="utf-8")
+    (context / "kong.yml").write_text("v1\n", encoding="utf-8")
+    first = docker_context_content_sha(context)
+    (context / "kong.yml").write_text("v2\n", encoding="utf-8")
+    second = docker_context_content_sha(context)
+    assert first != second
+    assert len(first) == 12
 
 
 def test_toolkit_dockerfile_and_build_args():
