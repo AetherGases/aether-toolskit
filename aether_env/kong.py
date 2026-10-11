@@ -16,8 +16,8 @@ KONG_ROUTES: tuple[KongRoute, ...] = (
     KongRoute("aether-ms-inventory", "/inventory", "aether-ms-inventory.aether.svc.cluster.local", 8080, True),
     KongRoute("aether-ms-cloudinary", "/cloudinary", "aether-ms-cloudinary.aether.svc.cluster.local", 8080, True),
     KongRoute("ms-aeko-hub", "/hub", "ms-aeko-hub.aether.svc.cluster.local", 8000, True),
-    KongRoute("aether-web-administrative", "/admin", "aether-web-administrative.aether.svc.cluster.local", 8080, True),
-    KongRoute("aether-web-flow", "/", "aether-web-flow.aether.svc.cluster.local", 80, False),
+    KongRoute("aether-web-administrative", "/", "aether-web-administrative.aether.svc.cluster.local", 8080, True),
+    KongRoute("aether-web-flow", "/dashboard", "aether-web-flow.aether.svc.cluster.local", 80, False),
 )
 
 
