@@ -108,15 +108,23 @@ SELECT
     g.formula AS gas_formula,
     g.is_biogenic AS gas_is_biogenic,
     g.gwp AS gas_gwp,
-    e.quantity_co2e
+    e.quantity_co2e,
+    NULLIF(BTRIM(a.city::text), '') AS city,
+    NULLIF(BTRIM(a.state::text), '') AS state,
+    CASE WHEN a.id IS NOT NULL THEN 'Brazil'::text ELSE NULL::text END AS country
 FROM emission e
 JOIN inventory i ON i.id = e.id_inventory
 LEFT JOIN department d ON d.id = i.id_department
 LEFT JOIN unit u ON u.id = d.id_unit
 LEFT JOIN enterprise en ON en.id = u.id_enterprise
+LEFT JOIN address a ON a.id = u.id_address
 LEFT JOIN scope s ON s.id = e.id_scope
 LEFT JOIN category c ON c.id = e.id_category
 LEFT JOIN gas g ON g.id = e.id_gas;
+
+COMMENT ON COLUMN vw_fact_emission.city IS 'City from the unit address, never parsed from inventory_name. Null when unavailable.';
+COMMENT ON COLUMN vw_fact_emission.state IS 'State from the unit address. Null when unavailable.';
+COMMENT ON COLUMN vw_fact_emission.country IS 'Brazil for registered unit addresses: domestic-only business assumption. Review before adding foreign units.';
 
 COMMENT ON VIEW vw_fact_emission IS
     'Star-schema emission fact. Minimum grain: one emission. Dimensions: enterprise, unit, department, inventory period, scope, category, and gas. Metric: quantity_co2e. Missing dimensions are not inferred. AN-FR-001, AN-FR-003, AN-FR-008, AN-FR-009.';
@@ -165,13 +173,21 @@ SELECT
     c.id AS category_id,
     CASE WHEN r.id_category IS NULL THEN 'Uninformed' ELSE c.name END AS category_name,
     (r.id_category IS NULL) AS category_uninformed,
-    r.quantity_co2e
+    r.quantity_co2e,
+    NULLIF(BTRIM(a.city::text), '') AS city,
+    NULLIF(BTRIM(a.state::text), '') AS state,
+    CASE WHEN a.id IS NOT NULL THEN 'Brazil'::text ELSE NULL::text END AS country
 FROM reduction r
 JOIN inventory i ON i.id = r.id_inventory
 LEFT JOIN department d ON d.id = i.id_department
 LEFT JOIN unit u ON u.id = d.id_unit
 LEFT JOIN enterprise en ON en.id = u.id_enterprise
+LEFT JOIN address a ON a.id = u.id_address
 LEFT JOIN category c ON c.id = r.id_category;
+
+COMMENT ON COLUMN vw_fact_reduction.city IS 'City from the unit address, never parsed from inventory_name. Null when unavailable.';
+COMMENT ON COLUMN vw_fact_reduction.state IS 'State from the unit address. Null when unavailable.';
+COMMENT ON COLUMN vw_fact_reduction.country IS 'Brazil for registered unit addresses: domestic-only business assumption. Review before adding foreign units.';
 
 COMMENT ON VIEW vw_fact_reduction IS
     'Star-schema reduction fact. Minimum grain: one reduction. Dimensions: organizational, inventory period, and category. Does not publish gas or scope. AN-FR-002, AN-FR-003, AN-FR-008, AN-FR-009.';
@@ -318,8 +334,19 @@ SELECT
     cumulative_reduced,
     cumulative_net,
     rank_emitted_in_enterprise_period,
-    rank_net_in_enterprise_period
-FROM windowed;
+    rank_net_in_enterprise_period,
+    NULLIF(BTRIM(a_geo.city::text), '') AS city,
+    NULLIF(BTRIM(a_geo.state::text), '') AS state,
+    CASE WHEN a_geo.id IS NOT NULL THEN 'Brazil'::text ELSE NULL::text END AS country
+FROM windowed w
+LEFT JOIN inventory i_geo ON i_geo.id = w.inventory_id
+LEFT JOIN department d_geo ON d_geo.id = i_geo.id_department
+LEFT JOIN unit u_geo ON u_geo.id = d_geo.id_unit
+LEFT JOIN address a_geo ON a_geo.id = u_geo.id_address;
+
+COMMENT ON COLUMN vw_analytics_org_period.city IS 'City from the unit address, never parsed from inventory_name. Null when unavailable.';
+COMMENT ON COLUMN vw_analytics_org_period.state IS 'State from the unit address. Null when unavailable.';
+COMMENT ON COLUMN vw_analytics_org_period.country IS 'Brazil for registered unit addresses: domestic-only business assumption. Review before adding foreign units.';
 
 COMMENT ON VIEW vw_analytics_org_period IS
     'Analytical contract by inventory/period with CTEs for dimensional preparation, aggregation, and composition, plus window functions for previous period, variation, cumulative totals, and ranking. Inventories without facts appear with zero totals. AN-FR-004, AN-FR-005, AN-FR-006.';
