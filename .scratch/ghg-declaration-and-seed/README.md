@@ -8,10 +8,10 @@ ghg-declaration-and-seed/
 ├── specs/             ← fonte de verdade
 │   ├── CAPABILITY-MAP.md
 │   ├── SPEC-ghg-complete-declaration.md
-│   └── SPEC-seed-minimum-100.md
+│   └── SPEC-seed-minimum-500.md
 └── issues/
     ├── 01-implementar-fn-ghg-complete-declaration.md
-    └── 02-expandir-seed-minimum-100.md   (Blocked by: 01)
+    └── 02-expandir-seed-minimum-500.md   (Blocked by: 01)
 ```
 
 Comece pelo [PRD](PRD.md) ou pelo [mapa](map.md).

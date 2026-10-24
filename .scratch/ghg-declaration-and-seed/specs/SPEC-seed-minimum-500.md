@@ -1,23 +1,23 @@
-# Spec: seed-minimum-100
+# Spec: seed-minimum-500
 
-**Module id:** `seed-minimum-100`
+**Module id:** `seed-minimum-500`
 
 **Dependência (contrato):** `ghg-complete-declaration`
 
-**Ordem de build:** `ghg-complete-declaration` → `seed-minimum-100`
+**Ordem de build:** `ghg-complete-declaration` → `seed-minimum-500`
 
-Este documento especifica a expansão da massa fictícia de `dbAether2Year`. Não é plano de implementação, não contém `INSERT`s, DDL nem testes.
+Este documento especifica a expansão da massa fictícia de `dbAether2Year`. Meta operacional: **500** linhas por tabela de classe B (corrigido de 100). Não é plano de implementação, não contém `INSERT`s, DDL nem testes.
 
 ---
 
 ## Objective
 
-Ampliar o seed PostgreSQL de **dbAether2Year** para que **toda tabela de classe B (fato / operacional / demo)** tenha **pelo menos 100 linhas**, preservando a história atual do demo e adaptando o restante (funções, views, comentários, sequences) para continuar válido com o catálogo e o volume maiores.
+Ampliar o seed PostgreSQL de **dbAether2Year** para que **toda tabela de classe B (fato / operacional / demo)** tenha **pelo menos 500 linhas**, preservando a história atual do demo e adaptando o restante (funções, views, comentários, sequences) para continuar válido com o catálogo e o volume maiores.
 
 O seed maior **não pode**:
 
 - quebrar FKs, UNIQUEs ou CHECKs;
-- inventar 100 escopos GHG (nem outros catálogos fechados);
+- inventar 500 escopos GHG (nem outros catálogos fechados);
 - substituir identidades já usadas pelos dashboards;
 - assumir que o catálogo atual de 6 gases / 12 categorias é o universo inteiro da declaração.
 
@@ -28,7 +28,7 @@ Quem usa: quem sobe o ambiente local/QA (Docker init ou `scripts/load_postgres_i
 ## Assumptions
 
 1. O alvo é **somente** `dbAether2Year`. `dbAether1Year` e `init-postgres/08-first-year-creating-initial-tables.sql` estão **fora de escopo**.
-2. “Cada tabela” **não** significa literalmente toda relação em `public`. Significa toda tabela **de classe B**. Catálogos fechados (classe A) e tabelas de auditoria/sistema (classe C) **não** são inflados com valores falsos só para chegar a 100.
+2. “Cada tabela” **não** significa literalmente toda relação em `public`. Significa toda tabela **de classe B**. Catálogos fechados (classe A) e tabelas de auditoria/sistema (classe C) **não** são inflados com valores falsos só para chegar a 500.
 3. A função `fn_ghg_complete_declaration(p_enterprise_id, p_initial_year, p_target_year)` pode ainda **não estar implementada**. Este módulo depende do **contrato**, não da existência do arquivo SQL no momento da redação desta spec. A ordem de build continua declaração → seed.
 4. Contrato da declaração (não negociável neste módulo):
    - filtra inventários `APPROVED`;
@@ -83,7 +83,7 @@ python -m pytest -q
 Asserções SQL após o init (padrão de verificação). Substituir conexão pelos valores de `.env` / `POSTGRES_*`:
 
 ```sql
--- Cardinalidade classe B (todas devem ter n >= 100)
+-- Cardinalidade classe B (todas devem ter n >= 500)
 SELECT c.relname, c.n_live_tup
 FROM pg_stat_user_tables c
 WHERE c.schemaname = 'public'
@@ -114,7 +114,7 @@ UNION ALL SELECT 'emission', COUNT(*) FROM emission
 UNION ALL SELECT 'reduction', COUNT(*) FROM reduction
 UNION ALL SELECT 'reported_problem', COUNT(*) FROM reported_problem;
 
--- Classe A: cardinalidade legal (não 100 fictícios)
+-- Classe A: cardinalidade legal (não 500 fictícios)
 SELECT COUNT(*) FROM scope;       -- = 3
 SELECT COUNT(*) FROM permission;  -- = 5 (catálogo atual de padrões)
 SELECT name FROM scope ORDER BY id;
@@ -139,7 +139,7 @@ SELECT * FROM fn_metadata_completeness();
 -- SELECT COUNT(*) FROM fn_ghg_complete_declaration(1, 2022, 2025);
 ```
 
-Critério do padrão: para cada tabela de classe B, `COUNT(*) >= 100`.
+Critério do padrão: para cada tabela de classe B, `COUNT(*) >= 500`.
 
 ---
 
@@ -160,9 +160,9 @@ scripts/load_postgres_init.py                → ordem de reaplicação; só mud
 compose.yaml                                 → volume init-postgres → docker-entrypoint-initdb.d
 tests/                                       → pytest aether_env; não é suíte SQL
 .scratch/ghg-declaration-and-seed/
-  specs/SPEC-seed-minimum-100.md              → esta spec
+  specs/SPEC-seed-minimum-500.md              → esta spec
   specs/SPEC-ghg-complete-declaration.md      → contrato que este módulo consome
-  issues/02-expandir-seed-minimum-100.md
+  issues/02-expandir-seed-minimum-500.md
 ```
 
 **Arquivo a alterar (default):** `init-postgres/200-adding-users-initial.sql` — **append** de linhas e `setval`, sem apagar o bloco atual.
@@ -217,7 +217,7 @@ Não há pytest SQL. Não criar suíte pytest só para este módulo, a menos que
 Níveis:
 
 1. **Load-init:** `docker compose down -v && docker compose up -d postgres` aplica `02`–`07`, `08` (1º ano / risco Docker) e `200` sem erro de FK, UNIQUE, CHECK, trigger ou `setval`.
-2. **Asserções de cardinalidade:** `COUNT(*) >= 100` em **todas** as tabelas de classe B; classe A com cardinalidade legal; classe C sem `INSERT` manual.
+2. **Asserções de cardinalidade:** `COUNT(*) >= 500` em **todas** as tabelas de classe B; classe A com cardinalidade legal; classe C sem `INSERT` manual.
 3. **Identidades:** Aurora id 1, unidades 1–6, funcionários 1–17, inventários 1–24 `APPROVED` + `INPUT` 2022–2025, escopos `Scope 1/2/3`, permissão `user:analytics:visibility:high` no grupo 1.
 4. **Dashboards:** `fn_dash_visible_units(1, NULL, 'user:analytics:visibility:high')` devolve as unidades da Aurora; `fn_dash_emissions_by_scope` e `fn_dash_emissions_series` devolvem linhas para 2022–2025; split biogênico usa `gas.is_biogenic` (redução **não** entra em `green_tco2e`).
 5. **Rotinas:** após `setval`, `sp_register_emission` / `sp_register_reduction` inserem id novo sem colidir com o seed. `fn_inventory_environmental_balance(1)` retorna totais (não precisa coincidir com valores pré-expansão).
@@ -235,7 +235,7 @@ Não exigir que `n_live_tup` de `pg_stat_user_tables` seja a fonte da verdade se
   - Preservar por append as identidades listadas em “Identidades imutáveis do demo”.
   - Avançar **todas** as sequences tocadas, inclusive as de tabelas hoje vazias.
   - Manter CNPJ/CPF/e-mail/`formula`/`permission.pattern`/`category.name`/`plan.name` únicos quando o schema exige.
-  - Incluir no catálogo de gás **espécies** que a planilha de declaração conhece (HFC-23, NF3, PFCs etc.) **sem** apagar a linha-família `HFCs` e **sem** inflar para 100 fórmulas inventadas.
+  - Incluir no catálogo de gás **espécies** que a planilha de declaração conhece (HFC-23, NF3, PFCs etc.) **sem** apagar a linha-família `HFCs` e **sem** inflar para 500 fórmulas inventadas.
   - Incluir categorias que a declaração mapeia (`Emissões fugitivas`, `Processos industriais`, restantes do Scope 3 GHG Protocol) **e** categorias Scope 3 extras que exercitem `outras_escopo_iii`.
   - Ligar pelo menos alguns fatos `emission` Aurora (`APPROVED`, anos 2022–2025) às espécies/categorias novas, para o lookup dinâmico não devolver nulo quando o fato existe.
   - Respeitar triggers `fn_validate_employee_permission_group_enterprise`: grupo com `id_enterprise` precisa coincidir com a empresa da unidade do departamento; grupo global (`id_enterprise` NULL, hoje id 4) permanece válido.
@@ -246,14 +246,14 @@ Não exigir que `n_live_tup` de `pg_stat_user_tables` seja a fonte da verdade se
   - Mudar nomes dos 3 escopos ou adicionar `Scope 4` / escopos inventados.
   - Recriar/substituir (em vez de append) os ids 1–N do demo.
   - Semear `audit_row_event`, `audit_row_update`, `audit_purge_log` ou `technical_metadata` com linhas falsas.
-  - Inflar `gas`, `category` ou `permission` até 100 valores sem significado de domínio.
+  - Inflar `gas`, `category` ou `permission` até 500 valores sem significado de domínio.
   - Criar `201-*.sql` (muda loader / ordem Docker).
   - Alterar `08-first-year-*` ou semear `dbAether1Year`.
-  - Se um UNIQUE/CHECK tornar 100 linhas de classe B **impossível** sem mudar o schema.
+  - Se um UNIQUE/CHECK tornar 500 linhas de classe B **impossível** sem mudar o schema.
   - Desligar triggers de auditoria durante o seed.
 - Never:
   - Escrever implementação nesta spec (sem `INSERT`s reais, sem testes, sem patches de função “por via das dúvidas”).
-  - Inventar 100 scopes, 100 permissões de backend, 100 gases químicos falsos ou 100 categorias GHG sem protocolo.
+  - Inventar 500 scopes, 500 permissões de backend, 500 gases químicos falsos ou 500 categorias GHG sem protocolo.
   - Tratar `reduction.quantity_co2e` como remoção biogênica.
   - Enrolar espécie (HFC-23, CF4, …) no total da família `HFCs` / `PFCs` como se fossem a mesma linha.
   - Usar documentos/e-mails duplicados ou dados reais novos além dos QA já presentes.
@@ -268,56 +268,56 @@ Fonte: `CREATE TABLE` em `02`, `03`, `07`; `INSERT` em `200`; sequences no final
 
 ### Classificação (default desta spec)
 
-| Classe | Significado | Meta de 100 linhas? |
+| Classe | Significado | Meta de 500 linhas? |
 |---|---|---|
-| **A — catálogo fechado** | Cardinalidade definida por protocolo, enum de produto ou UNIQUE de domínio que **não** admite 100 valores inventados | **Não.** Expandir só com valores legalmente mapeáveis |
-| **B — fato / operacional / demo** | Instâncias de negócio; 100 linhas são legais no domínio | **Sim. `COUNT(*) >= 100`** |
-| **C — auditoria / sistema** | Gerada em runtime (trigger, `sp_sync_*`) | **Não semear.** Não entra no critério “cada tabela ≥ 100” |
+| **A — catálogo fechado** | Cardinalidade definida por protocolo, enum de produto ou UNIQUE de domínio que **não** admite 500 valores inventados | **Não.** Expandir só com valores legalmente mapeáveis |
+| **B — fato / operacional / demo** | Instâncias de negócio; 500 linhas são legais no domínio | **Sim. `COUNT(*) >= 500`** |
+| **C — auditoria / sistema** | Gerada em runtime (trigger, `sp_sync_*`) | **Não semear.** Não entra no critério “cada tabela ≥ 500” |
 
-### Classe A — não inflar até 100
+### Classe A — não inflar até 500
 
-| Tabela | Seed atual | UNIQUE / teto | 100 é legal? | Ação |
+| Tabela | Seed atual | UNIQUE / teto | 500 é legal? | Ação |
 |---|---|---|---|---|
-| `scope` | **3** | `name UNIQUE`; protocolo GHG = 3 escopos | **Não** | Manter ids 1–3 e nomes `Scope 1/2/3`. **Proibido** inventar Scope 4…100 |
-| `category` | **12** | `name UNIQUE`; comentário do schema: 15 cats. Scope 3 + Other; Scope 1/2 também fechados | **Não** como padding falso | **Expandir** com nomes mapeados + extras Scope 3 para `outras_escopo_iii`. Não ir a 100 nomes inventados |
+| `scope` | **3** | `name UNIQUE`; protocolo GHG = 3 escopos | **Não** | Manter ids 1–3 e nomes `Scope 1/2/3`. **Proibido** inventar Scope 4…500 |
+| `category` | **12** | `name UNIQUE`; comentário do schema: 15 cats. Scope 3 + Other; Scope 1/2 também fechados | **Não** como padding falso | **Expandir** com nomes mapeados + extras Scope 3 para `outras_escopo_iii`. Não ir a 500 nomes inventados |
 | `gas` | **6** | `formula UNIQUE`; GWP `CHECK (gwp > 0)` | **Não** como química fictícia | **Expandir** com fórmulas da planilha (espécies HFC/PFC, NF3, …). Não apagar `CO2`, `CH4`, `N2O`, `CO2(b)`, `HFCs`, `SF6` |
 | `permission` | **5** | `pattern UNIQUE` + `CHECK` não vazio; catálogo do backend (`user:analytics:visibility:high`, `inventory:analysis`, `inventory:edit`, `calculator`, `chatbot`) | **Não** | Manter os 5 padrões. Não criar 95 permissões fantasmas |
 
-Justificativa `scope`: inflar quebra o significado GHG Protocol **e** o contrato da declaração (mapeia `Scope 1/2/3` como existem hoje). `fn_dash_emissions_by_scope` agrupa por linhas reais de `scope`; 100 escopos produziriam 100 fatias sem sentido.
+Justificativa `scope`: inflar quebra o significado GHG Protocol **e** o contrato da declaração (mapeia `Scope 1/2/3` como existem hoje). `fn_dash_emissions_by_scope` agrupa por linhas reais de `scope`; 500 escopos produziriam 500 fatias sem sentido.
 
 Justificativa `permission`: `fn_dash_visible_units` faz match de regex em `permission.pattern`. Padrões extras não autorizados pelo backend poluem autorização.
 
-Justificativa `gas` / `category`: o schema **permite** 100 linhas (só UNIQUE de nome/fórmula), mas o domínio e a declaração **não**. A expansão é **qualitativa** (cobertura do mapa), não quantitativa (padding).
+Justificativa `gas` / `category`: o schema **permite** 500 linhas (só UNIQUE de nome/fórmula), mas o domínio e a declaração **não**. A expansão é **qualitativa** (cobertura do mapa), não quantitativa (padding).
 
-### Classe B — obrigatório ≥ 100
+### Classe B — obrigatório ≥ 500
 
-| Tabela | Seed atual | UNIQUE / CHECK relevantes | 100 é legal? | Alvo |
+| Tabela | Seed atual | UNIQUE / CHECK relevantes | 500 é legal? | Alvo |
 |---|---|---|---|---|
-| `plan` | **0** | `name UNIQUE` (`VARCHAR(50)`); `price >= 0`; `duration_days > 0` | Sim | ≥ 100 planos fictícios |
-| `address` | **6** | sem UNIQUE de negócio | Sim | ≥ 100; Brasil; ids 1–6 intactos |
-| `enterprise` | **3** | `cnpj CHAR(14) UNIQUE` | Sim | ≥ 100; **id 1 Aurora permanece** |
-| `plan_subscription` | **0** | `installments >= 0`; FKs plan+enterprise | Sim | ≥ 100 |
-| `payment` | **0** | `value > 0`; `due_date NOT NULL`; enum `PAYMENT_STATUS`; FK subscription `ON DELETE RESTRICT` | Sim | ≥ 100 |
-| `unit` | **6** | `cnpj UNIQUE`; FK enterprise+address | Sim | ≥ 100; **ids 1–6 intactos** (não acrescentar plantas na Aurora se isso puder ser evitado) |
-| `department` | **12** | sem UNIQUE `(name, unit)` — nomes repetidos já existem | Sim | ≥ 100 |
-| `permission_group` | **4** | `id_enterprise` opcional (NULL = global) | Sim (grupos por empresa) | ≥ 100; ids 1–4 intactos; grupo 1 Aurora com visibilidade; grupo 4 global QA |
-| `permission_group_permission` | **17** | UNIQUE `(id_permission, id_permission_group)` | Sim, teto = 5 permissões × N grupos | ≥ 100, só com as 5 permissões existentes |
-| `parana_seal_forecast` | **24** | `score >= 0`, `level >= 0`; N:1 com unit | Sim | ≥ 100 |
-| `administrator` | **0** | `email UNIQUE` | Sim (operadores fictícios) | ≥ 100 |
-| `storage_file` | **5** | sem UNIQUE de path no schema | Sim | ≥ 100 caminhos fictícios |
-| `employee` | **17** | `cpf UNIQUE`, `email UNIQUE`; status enum; grupo/dept obrigatórios | Sim | ≥ 100; ids 1–17 intactos |
-| `inventory` | **24** | período `end >= start`; status/type enums | Sim | ≥ 100; **ids 1–24** `APPROVED`+`INPUT` 2022–2025 intactos |
-| `emission` | **359** | `quantity_co2e >= 0`; `supplier_data_percentage` 0–100; FKs gas/scope/category/inventory | Sim (já ≥ 100) | Manter 1–359; **append** fatos para gases/categorias novos |
-| `reduction` | **48** | FK inventory+category; sem CHECK de sinal na tabela | Sim | ≥ 100; ids 1–48 intactos; **não** marcar como biogênico |
-| `reported_problem` | **10** | enum `PROBLEM_CATEGORY`; `description VARCHAR(100)` | Sim | ≥ 100 |
+| `plan` | **0** | `name UNIQUE` (`VARCHAR(50)`); `price >= 0`; `duration_days > 0` | Sim | ≥ 500 planos fictícios |
+| `address` | **6** | sem UNIQUE de negócio | Sim | ≥ 500; Brasil; ids 1–6 intactos |
+| `enterprise` | **3** | `cnpj CHAR(14) UNIQUE` | Sim | ≥ 500; **id 1 Aurora permanece** |
+| `plan_subscription` | **0** | `installments >= 0`; FKs plan+enterprise | Sim | ≥ 500 |
+| `payment` | **0** | `value > 0`; `due_date NOT NULL`; enum `PAYMENT_STATUS`; FK subscription `ON DELETE RESTRICT` | Sim | ≥ 500 |
+| `unit` | **6** | `cnpj UNIQUE`; FK enterprise+address | Sim | ≥ 500; **ids 1–6 intactos** (não acrescentar plantas na Aurora se isso puder ser evitado) |
+| `department` | **12** | sem UNIQUE `(name, unit)` — nomes repetidos já existem | Sim | ≥ 500 |
+| `permission_group` | **4** | `id_enterprise` opcional (NULL = global) | Sim (grupos por empresa) | ≥ 500; ids 1–4 intactos; grupo 1 Aurora com visibilidade; grupo 4 global QA |
+| `permission_group_permission` | **17** | UNIQUE `(id_permission, id_permission_group)` | Sim, teto = 5 permissões × N grupos | ≥ 500, só com as 5 permissões existentes |
+| `parana_seal_forecast` | **24** | `score >= 0`, `level >= 0`; N:1 com unit | Sim | ≥ 500 |
+| `administrator` | **0** | `email UNIQUE` | Sim (operadores fictícios) | ≥ 500 |
+| `storage_file` | **5** | sem UNIQUE de path no schema | Sim | ≥ 500 caminhos fictícios |
+| `employee` | **17** | `cpf UNIQUE`, `email UNIQUE`; status enum; grupo/dept obrigatórios | Sim | ≥ 500; ids 1–17 intactos |
+| `inventory` | **24** | período `end >= start`; status/type enums | Sim | ≥ 500; **ids 1–24** `APPROVED`+`INPUT` 2022–2025 intactos |
+| `emission` | **359** | `quantity_co2e >= 0`; `supplier_data_percentage` 0–100; FKs gas/scope/category/inventory | Sim (359 hoje; append até ≥ 500) | Manter 1–359; **append** até ≥ 500, incluindo fatos para gases/categorias novos |
+| `reduction` | **48** | FK inventory+category; sem CHECK de sinal na tabela | Sim | ≥ 500; ids 1–48 intactos; **não** marcar como biogênico |
+| `reported_problem` | **10** | enum `PROBLEM_CATEGORY`; `description VARCHAR(100)` | Sim | ≥ 500 |
 
-Nenhuma CHECK/UNIQUE de classe B impede 100 linhas. **Não** propor DDL.
+Nenhuma CHECK/UNIQUE de classe B impede 500 linhas. **Não** propor DDL.
 
 ### Classe C — runtime, não semear
 
 | Tabela | Como nasce | UNIQUE | Decisão |
 |---|---|---|---|
-| `audit_row_event` | trigger `trg_audit_insert_delete` em todo `INSERT`/`DELETE` de tabela de aplicação | PK | **Não** `INSERT` manual. O próprio seed expandido gera milhares de eventos INSERT. Não exige ≥ 100 como critério de aceite (embora o volume natural ultrapasse) |
+| `audit_row_event` | trigger `trg_audit_insert_delete` em todo `INSERT`/`DELETE` de tabela de aplicação | PK | **Não** `INSERT` manual. O próprio seed expandido gera milhares de eventos INSERT. Não exige ≥ 500 como critério de aceite (embora o volume natural ultrapasse) |
 | `audit_row_update` | trigger de `UPDATE` | PK | **Não** semear. Permanece ~0 se o seed só insere |
 | `audit_purge_log` | `sp_purge_audit_events` | PK | **Não** semear. Não chamar purge no init |
 | `technical_metadata` | `sp_sync_technical_metadata` + governance em `07` | UNIQUE parcial tabela / (tabela, coluna) | **Não** inflar. Padding exigiria relações falsas e quebraria `fn_metadata_completeness` |
@@ -362,7 +362,7 @@ O desacordo possível (“cada tabela inclui `scope` e `audit_row_event`?”) es
 
 Novos ids começam em `MAX(id)+1` de cada tabela.
 
-**Recomendação de grafo para não distorcer o dashboard Aurora:** unidades, departamentos e inventários **novos** pertencem sobretudo a **empresas 4+**. Aurora (funcionário 1, visibilidade high) continua vendo **unidades 1 e 2**. Totais podem subir só se fatos novos forem ligados aos inventários 1–24 — permitido de forma pontual para espécies/categorias da declaração, não para “encher” a Aurora até 100 plantas.
+**Recomendação de grafo para não distorcer o dashboard Aurora:** unidades, departamentos e inventários **novos** pertencem sobretudo a **empresas 4+**. Aurora (funcionário 1, visibilidade high) continua vendo **unidades 1 e 2**. Totais podem subir só se fatos novos forem ligados aos inventários 1–24 — permitido de forma pontual para espécies/categorias da declaração, não para “encher” a Aurora até 500 plantas.
 
 ---
 
@@ -400,7 +400,7 @@ Mapeadas (exemplos exigidos pelo enunciado + buracos do GHG Protocol Scope 3 em 
 
 **Extras Scope 3** (não mapeadas) para exercitar `outras_escopo_iii` — nomes que **não** coincidam com o mapa, por exemplo serviços de nuvem, eventos corporativos, embalagens terciárias. Pelo menos **duas** extras com fatos em inventário Aurora `APPROVED`.
 
-Não completar até 100.
+Não completar até 500.
 
 ---
 
@@ -408,20 +408,20 @@ Não completar até 100.
 
 Ordem lógica de FKs (a mesma do arquivo atual): `plan` / `address` → `enterprise` → `plan_subscription` → `payment`; `address`+`enterprise` → `unit` → `department` → `permission_group` → `permission_group_permission` → `employee`; catálogo A → `inventory` → `emission` / `reduction`; `storage_file` → `reported_problem`; `unit` → `parana_seal_forecast`; `administrator` independente.
 
-1. **plan (≥ 100):** nomes únicos ≤ 50 caracteres; preços ≥ 0; `duration_days > 0`.
-2. **address (≥ 100):** ids 1–6 intactos; CEPs `CHAR(8)`; cidades brasileiras.
-3. **enterprise (≥ 100):** id 1–3 intactos; 97+ CNPJs únicos.
-4. **unit (≥ 100):** ids 1–6 intactos; CNPJs únicos; preferir 1 unidade por empresa nova (evita inflar Aurora).
-5. **department (≥ 100):** pelo menos um departamento por unidade nova.
-6. **permission_group (≥ 100):** um grupo scoped por empresa nova; **não** copiar visibilidade high para todos — só Aurora grupo 1 (e o que já existe) tem `user:analytics:visibility:high`.
-7. **permission_group_permission (≥ 100):** combinações novas `(permission existente, grupo novo)` até ≥ 100 linhas no total. Teto confortável: 5 × ~100 grupos.
-8. **employee (≥ 100):** ids 1–17 intactos; CPF/e-mail únicos; grupo da **mesma** empresa do departamento (ou grupo 4 global, com parcimônia). Funcionário 1 permanece `ACTIVE`, dept 1, grupo 1.
-9. **plan_subscription / payment (≥ 100 cada):** `payment.value > 0`; status no enum; FK válida. Mistura `PAID` / `WAITING` / `CANCELLED` é aceitável.
-10. **administrator (≥ 100):** e-mails únicos fictícios; hash mock.
-11. **inventory (≥ 100):** ids 1–24 intactos (`APPROVED`+`INPUT`, períodos calendário 2022–2025). Novos podem misturar `UNDER_REVIEW`, `REJECTED`, `PROCESSING`, `ISSUED` etc., para o filtro `APPROVED` da declaração continuar seletivo. Incluir alguns `APPROVED` em empresas novas se quiser exercitar a declaração fora da Aurora, sem substituir a Aurora.
+1. **plan (≥ 500):** nomes únicos ≤ 50 caracteres; preços ≥ 0; `duration_days > 0`.
+2. **address (≥ 500):** ids 1–6 intactos; CEPs `CHAR(8)`; cidades brasileiras.
+3. **enterprise (≥ 500):** id 1–3 intactos; 497+ CNPJs únicos.
+4. **unit (≥ 500):** ids 1–6 intactos; CNPJs únicos; preferir 1 unidade por empresa nova (evita inflar Aurora).
+5. **department (≥ 500):** pelo menos um departamento por unidade nova.
+6. **permission_group (≥ 500):** um grupo scoped por empresa nova; **não** copiar visibilidade high para todos — só Aurora grupo 1 (e o que já existe) tem `user:analytics:visibility:high`.
+7. **permission_group_permission (≥ 500):** combinações novas `(permission existente, grupo novo)` até ≥ 500 linhas no total. Teto confortável: 5 × ≥100 grupos (500 linhas se cada grupo tiver as 5 permissões).
+8. **employee (≥ 500):** ids 1–17 intactos; CPF/e-mail únicos; grupo da **mesma** empresa do departamento (ou grupo 4 global, com parcimônia). Funcionário 1 permanece `ACTIVE`, dept 1, grupo 1.
+9. **plan_subscription / payment (≥ 500 cada):** `payment.value > 0`; status no enum; FK válida. Mistura `PAID` / `WAITING` / `CANCELLED` é aceitável.
+10. **administrator (≥ 500):** e-mails únicos fictícios; hash mock.
+11. **inventory (≥ 500):** ids 1–24 intactos (`APPROVED`+`INPUT`, períodos calendário 2022–2025). Novos podem misturar `UNDER_REVIEW`, `REJECTED`, `PROCESSING`, `ISSUED` etc., para o filtro `APPROVED` da declaração continuar seletivo. Incluir alguns `APPROVED` em empresas novas se quiser exercitar a declaração fora da Aurora, sem substituir a Aurora.
 12. **emission:** já 359. Append: espécies/categorias novas nos inventários Aurora 1–24 **e/ou** fatos nas empresas novas. `id_scope` só 1–3. `id_category` pode ser NULL (já existe no seed; a view marca `Uninformed`).
-13. **reduction (≥ 100):** append; `id_category` NOT NULL na procedure de registro — no seed, seguir o padrão atual (categoria 3 e 6) e também categorias novas **não biogênicas**.
-14. **storage_file / reported_problem / parana_seal_forecast:** completar até ≥ 100. Selos: vários anos por unidade são legais (já 4 por unidade nas 6 atuais).
+13. **reduction (≥ 500):** append; `id_category` NOT NULL na procedure de registro — no seed, seguir o padrão atual (categoria 3 e 6) e também categorias novas **não biogênicas**.
+14. **storage_file / reported_problem / parana_seal_forecast:** completar até ≥ 500. Selos: vários anos por unidade são legais (já 4 por unidade nas 6 atuais).
 
 Sequences: além das 17 já ajustadas no final de `200`, incluir `plan`, `plan_subscription`, `payment`, `administrator`. Sem isso, `sp_register_emission` não é o único risco — qualquer `INSERT` sem id explícito nessas tabelas colide ou reutiliza id 1 em tabela vazia (sequence default).
 
@@ -479,8 +479,8 @@ Fatos do seed devem existir para que um lookup de HFC-23 / NF3 / categoria mapea
 Testáveis após init limpo de `dbAether2Year`:
 
 1. Todo script de init relevante (`02`–`07`, `200`, e o loader Python na ordem documentada) aplica **sem** erro de FK, UNIQUE, CHECK, trigger de permissão ou colisão de serial.
-2. `COUNT(*) >= 100` em **cada** tabela de classe B listada nesta spec.
-3. Classe A: `scope` = 3 com nomes `Scope 1`, `Scope 2`, `Scope 3`; `permission` = 5 padrões atuais; `gas` e `category` contêm os ids 1–N atuais **mais** as expansões mapeadas, **sem** padding a 100 fictícios.
+2. `COUNT(*) >= 500` em **cada** tabela de classe B listada nesta spec.
+3. Classe A: `scope` = 3 com nomes `Scope 1`, `Scope 2`, `Scope 3`; `permission` = 5 padrões atuais; `gas` e `category` contêm os ids 1–N atuais **mais** as expansões mapeadas, **sem** padding a 500 fictícios.
 4. Classe C: nenhum `INSERT` manual em `audit_*` nem `technical_metadata`.
 5. Identidades do demo (tabela acima) intactas; sequences ≥ `MAX(id)` em toda tabela semeada com id explícito, incluindo `plan`, `plan_subscription`, `payment`, `administrator`.
 6. `fn_dash_visible_units(1, NULL, 'user:analytics:visibility:high')` retorna as unidades da Aurora; `fn_dash_emissions_by_scope` e `fn_dash_emissions_series` retornam linhas no intervalo 2022–2025 para esse funcionário.
@@ -495,11 +495,11 @@ Testáveis após init limpo de `dbAether2Year`:
 
 ## Open Questions
 
-1. **“Cada tabela” inclui `scope` e `audit_row_event`?** Default desta spec: **não**. `scope` é classe A (3 linhas). `audit_row_event` é classe C (preenchida por trigger). Se o aceite humano exigir 100 linhas em **todas** as relações de `public`, isso **conflita** com GHG Protocol e com a semântica de auditoria — precisa de decisão explícita antes do implemento.
-2. **Catálogos `gas`, `category`, `permission` devem chegar a 100?** Default: **não**. Só expansão qualitativa (declaração + extras `outras_escopo_iii`). `permission` permanece 5.
-3. **`administrator` e `plan` / `payment` / `plan_subscription` (hoje 0 linhas) entram na meta 100?** Default: **sim**, classe B. São dados operacionais/demo, não protocolo GHG.
+1. **“Cada tabela” inclui `scope` e `audit_row_event`?** Default desta spec: **não**. `scope` é classe A (3 linhas). `audit_row_event` é classe C (preenchida por trigger). Se o aceite humano exigir 500 linhas em **todas** as relações de `public`, isso **conflita** com GHG Protocol e com a semântica de auditoria — precisa de decisão explícita antes do implemento.
+2. **Catálogos `gas`, `category`, `permission` devem chegar a 500?** Default: **não**. Só expansão qualitativa (declaração + extras `outras_escopo_iii`). `permission` permanece 5.
+3. **`administrator` e `plan` / `payment` / `plan_subscription` (hoje 0 linhas) entram na meta 500?** Default: **sim**, classe B. São dados operacionais/demo, não protocolo GHG.
 4. **Tabelas de auditoria devem ser semeadas?** Default: **não**. O seed expandido já gera `audit_row_event` em massa. `audit_row_update` e `audit_purge_log` ficam naturalmente vazios.
-5. **Primeiro ano (`08`, `dbAether1Year`) está no escopo?** Default: **não**. Não alterar `08-first-year-*`. Risco conhecido: no volume Docker, `08` roda **depois** de `07` **sem** `\connect` e pode criar tabelas de 1º ano **dentro** de `dbAether2Year`. Este módulo **não** as preenche até 100 e **não** corrige esse `\connect` (Ask first se o init quebrar por colisão de tipos/nomes — hoje os nomes são distintos: `address` vs `addresses`).
+5. **Primeiro ano (`08`, `dbAether1Year`) está no escopo?** Default: **não**. Não alterar `08-first-year-*`. Risco conhecido: no volume Docker, `08` roda **depois** de `07` **sem** `\connect` e pode criar tabelas de 1º ano **dentro** de `dbAether2Year`. Este módulo **não** as preenche até 500 e **não** corrige esse `\connect` (Ask first se o init quebrar por colisão de tipos/nomes — hoje os nomes são distintos: `address` vs `addresses`).
 6. **Append em `200` vs arquivo `201`?** Default: append em `200-adding-users-initial.sql` para não mudar `load_postgres_init.py` nem pytest.
 7. **Unidades extras na Aurora?** Default: **não**, para o funcionário 1 continuar a ver exatamente as plantas 1–2. Volume operacional vai para empresas 4+.
 8. **Totais tCO2e dos inventários 1–24 podem mudar?** Default: **sim, pontualmente**, para fatos de espécies/categorias novas necessários à declaração. Não há golden SQL. Se algum notebook externo fixou números do seed antigo, esse notebook está fora deste repo.
@@ -510,4 +510,4 @@ Testáveis após init limpo de `dbAether2Year`:
 
 ## Stop
 
-Esta spec é o artefato do módulo `seed-minimum-100`. Não avançar para plano, tasks ou SQL até aprovação humana (ou correção das Open Questions).
+Esta spec é o artefato do módulo `seed-minimum-500`. Não avançar para plano, tasks ou SQL até aprovação humana (ou correção das Open Questions).

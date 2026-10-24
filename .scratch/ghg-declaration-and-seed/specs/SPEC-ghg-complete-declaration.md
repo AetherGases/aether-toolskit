@@ -4,7 +4,7 @@
 
 **Dependência:** nenhuma
 
-**Ordem de build:** este módulo primeiro; `seed-minimum-100` depois
+**Ordem de build:** este módulo primeiro; `seed-minimum-500` depois
 
 Este documento especifica a função SQL da Declaração Completa de Emissão de Gases de Efeito Estufa. Não é plano de implementação e não contém o corpo da função.
 
@@ -99,7 +99,7 @@ python -m pytest -q
 ```
 init-postgres/05-second-year-analytical-layer.sql  → CREATE OR REPLACE da função, COMMENT, REVOKE, GRANT
 init-postgres/02-creating-initial-tables-second-year.sql → schema (não alterar neste módulo)
-init-postgres/200-adding-users-initial.sql         → seed atual; volume extra é o módulo seed-minimum-100
+init-postgres/200-adding-users-initial.sql         → seed atual; volume extra é o módulo seed-minimum-500
 .scratch/ghg-declaration-and-seed/
   specs/SPEC-ghg-complete-declaration.md           → esta spec
   specs/CAPABILITY-MAP.md                          → índice dos módulos
@@ -186,7 +186,7 @@ Não criar pytest Python para SQL neste módulo, a menos que o plano posterior p
   - Somar espécies na célula da família.
   - Usar `reduction` como remoção ou como tCO2e da declaração.
   - Devolver `0` no lugar de `NULL` para célula sem fato.
-  - Implementar o módulo `seed-minimum-100` nesta spec.
+  - Implementar o módulo `seed-minimum-500` nesta spec.
   - Escrever o corpo da função nesta fase (Specify).
 
 ---

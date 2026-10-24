@@ -6,14 +6,14 @@ Este PRD **não** substitui as specs. Ele só aponta o contrato e os tickets.
 
 ## Objetivo
 
-O backend precisa de uma função SQL que devolva as células manuais da Declaração Completa de Emissão de GEE (empresa + intervalo de anos). O ambiente de demo precisa de massa ≥ 100 linhas nas tabelas operacionais, sem destruir o catálogo GHG nem as funções analíticas existentes.
+O backend precisa de uma função SQL que devolva as células manuais da Declaração Completa de Emissão de GEE (empresa + intervalo de anos). O ambiente de demo precisa de massa ≥ 500 linhas nas tabelas operacionais, sem destruir o catálogo GHG nem as funções analíticas existentes.
 
 ## Specs
 
 | Module id | Spec | Ticket |
 |---|---|---|
 | ghg-complete-declaration | [`SPEC-ghg-complete-declaration.md`](specs/SPEC-ghg-complete-declaration.md) | [Implementar fn_ghg_complete_declaration](issues/01-implementar-fn-ghg-complete-declaration.md) |
-| seed-minimum-100 | [`SPEC-seed-minimum-100.md`](specs/SPEC-seed-minimum-100.md) | [Expandir seed mínimo a 100 linhas](issues/02-expandir-seed-minimum-100.md) |
+| seed-minimum-500 | [`SPEC-seed-minimum-500.md`](specs/SPEC-seed-minimum-500.md) | [Expandir seed mínimo a 500 linhas](issues/02-expandir-seed-minimum-500.md) |
 
 Mapa da iniciativa: [`map.md`](map.md) · [`CAPABILITY-MAP.md`](specs/CAPABILITY-MAP.md)
 

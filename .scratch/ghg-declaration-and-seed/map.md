@@ -2,7 +2,7 @@
 
 ## Destination
 
-Implementar as duas specs da iniciativa: `fn_ghg_complete_declaration` em `dbAether2Year`, depois o dataload mínimo de 100 linhas nas tabelas operacionais, sem quebrar `fn_dash_*` nem o contrato da declaração.
+Implementar as duas specs da iniciativa: `fn_ghg_complete_declaration` em `dbAether2Year`, depois o dataload mínimo de 500 linhas nas tabelas operacionais, sem quebrar `fn_dash_*` nem o contrato da declaração.
 
 ## Notes
 
@@ -10,7 +10,7 @@ Implementar as duas specs da iniciativa: `fn_ghg_complete_declaration` em `dbAet
 - Specs (fonte de verdade, não duplicar nestes tickets):
   - [`CAPABILITY-MAP.md`](specs/CAPABILITY-MAP.md)
   - [`SPEC-ghg-complete-declaration.md`](specs/SPEC-ghg-complete-declaration.md)
-  - [`SPEC-seed-minimum-100.md`](specs/SPEC-seed-minimum-100.md)
+  - [`SPEC-seed-minimum-500.md`](specs/SPEC-seed-minimum-500.md)
 - Skills: spec-driven-development (spec já escrita; próxima fase é plan/tasks após aprovação humana), TDD na implementação.
 - Tracker: markdown local nesta pasta. Referir tickets **pelo título**, não pelo número.
 - Ordem: declaração primeiro; seed depois (`Blocked by` no ticket do seed).
@@ -29,5 +29,5 @@ Decisões de desenho estão nas specs (grilling + specify). Este mapa só regist
 - Schema e seed de `dbAether1Year` / `08-first-year-*`.
 - Quadro 1.4 e totais automáticos da planilha.
 - Endpoint HTTP / DTO Java/Python do backend.
-- Inflar `scope` a 100 nomes fictícios.
+- Inflar `scope` a 500 nomes fictícios.
 - Tratar `reduction` como remoção biogênica.
