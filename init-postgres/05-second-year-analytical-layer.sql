@@ -1215,6 +1215,346 @@ $$;
 COMMENT ON FUNCTION fn_dash_emissions_by_scope(integer, integer, integer[], integer, text, numeric) IS
     'Returns filtered emitted tCO2e and caller-scaled participation by scope, with no rows when the total is zero. DASH-FR-001, DASH-FR-004, DASH-FR-013, DASH-FR-014, DASH-NFR-002, DASH-NFR-004.';
 
+-- Manual cells of the complete GHG emission declaration (frames 1.1, 1.2, 1.3, 1.5).
+CREATE OR REPLACE FUNCTION fn_ghg_complete_declaration(
+    p_enterprise_id integer
+)
+RETURNS TABLE (
+    quadro text,
+    eixo   text,
+    codigo text,
+    valor  numeric
+)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_target_year integer;
+    v_period_start date;
+    v_period_end date;
+BEGIN
+    IF p_enterprise_id IS NULL THEN
+        RAISE EXCEPTION 'enterprise_id is required'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM enterprise e
+        WHERE e.id = p_enterprise_id
+    ) THEN
+        RAISE EXCEPTION 'Enterprise % not found', p_enterprise_id
+            USING ERRCODE = '23503';
+    END IF;
+
+    v_target_year := EXTRACT(YEAR FROM CURRENT_DATE)::integer - 1;
+    v_period_start := make_date(v_target_year, 1, 1);
+    v_period_end := make_date(v_target_year, 12, 31);
+
+    RETURN QUERY
+    WITH skeleton AS (
+        SELECT '1.1'::text AS cell_quadro, 'GAS'::text AS cell_eixo, gas_code AS cell_codigo
+        FROM unnest(ARRAY[
+            'CO2', 'CH4', 'N2O', 'HFCs',
+            'HFC-23', 'HFC-32', 'HFC-41', 'HFC-125', 'HFC-134', 'HFC-134a',
+            'HFC-143', 'HFC-143a', 'HFC-152', 'HFC-152a', 'HFC-161',
+            'HFC-227ea', 'HFC-236cb', 'HFC-236ea', 'HFC-236fa',
+            'HFC-245ca', 'HFC-245fa', 'HFC-365mfc', 'HFC-43-10mee',
+            'PFCs',
+            'PFC-14', 'PFC-116', 'PFC-218', 'PFC-318',
+            'PFC-3-1-10', 'PFC-4-1-12', 'PFC-5-1-14', 'PFC-9-1-18',
+            'trifluorometil_pentafluoreto_enxofre', 'perfluorociclopropano',
+            'SF6', 'NF3'
+        ]::text[]) AS gas_code
+
+        UNION ALL
+        SELECT '1.1', 'CATEGORIA', cat_code
+        FROM unnest(ARRAY[
+            'combustao_movel',
+            'combustao_estacionaria',
+            'emissoes_fugitivas',
+            'processos_industriais',
+            'atividades_agricolas_e_mudancas_uso_solo',
+            'residuos'
+        ]::text[]) AS cat_code
+
+        UNION ALL
+        SELECT frame, 'GAS', gas_code
+        FROM unnest(ARRAY['1.2', '1.3']::text[]) AS frame
+        CROSS JOIN unnest(ARRAY[
+            'CO2', 'CH4', 'N2O', 'HFC', 'PFC', 'SF6', 'NF3'
+        ]::text[]) AS gas_code
+
+        UNION ALL
+        SELECT '1.2', 'CATEGORIA', cat_code
+        FROM unnest(ARRAY[
+            'energia_eletrica_localizacao',
+            'energia_termica',
+            'perdas_transmissao_distribuicao'
+        ]::text[]) AS cat_code
+
+        UNION ALL
+        SELECT '1.3', axis, cat_code
+        FROM unnest(ARRAY[
+            'CATEGORIA', 'BIOGENICO_EMISSAO', 'BIOGENICO_REMOCAO'
+        ]::text[]) AS axis
+        CROSS JOIN unnest(ARRAY[
+            'transporte_distribuicao_upstream',
+            'residuos_solidos_operacao',
+            'efluentes_liquidos',
+            'viagens_a_negocios',
+            'deslocamento_casa_trabalho',
+            'transporte_distribuicao_downstream',
+            'outras_escopo_iii'
+        ]::text[]) AS cat_code
+
+        UNION ALL
+        SELECT '1.5', axis, scope_code
+        FROM unnest(ARRAY[
+            'BIOGENICO_EMISSAO', 'BIOGENICO_REMOCAO'
+        ]::text[]) AS axis
+        CROSS JOIN unnest(ARRAY['ESCOPO_I', 'ESCOPO_II']::text[]) AS scope_code
+    ),
+    quadro_scope AS (
+        SELECT *
+        FROM (VALUES
+            ('1.1'::text, 'scope 1'::text),
+            ('1.2'::text, 'scope 2'::text),
+            ('1.3'::text, 'scope 3'::text)
+        ) AS t(cell_quadro, scope_key)
+    ),
+    category_alias AS (
+        SELECT *
+        FROM (VALUES
+            ('1.1'::text, 'combustao_movel'::text, 'Combustão móvel'::text),
+            ('1.1', 'combustao_estacionaria', 'Combustão estacionária'),
+            ('1.1', 'emissoes_fugitivas', 'Emissões fugitivas'),
+            ('1.1', 'processos_industriais', 'Processos industriais'),
+            ('1.1', 'atividades_agricolas_e_mudancas_uso_solo', 'Atividades agrícolas e mudanças no uso do solo'),
+            ('1.1', 'residuos', 'Resíduos (resíduos sólidos + efluentes)'),
+            ('1.1', 'residuos', 'Resíduos'),
+            ('1.2', 'energia_eletrica_localizacao', 'Compra de Energia Elétrica, pelo critério de localização geográfica'),
+            ('1.2', 'energia_eletrica_localizacao', 'Energia elétrica adquirida'),
+            ('1.2', 'energia_termica', 'Compra de Energia Térmica'),
+            ('1.2', 'perdas_transmissao_distribuicao', 'Perdas na Transmissão e Distribuição'),
+            ('1.3', 'transporte_distribuicao_upstream', 'Transporte e distribuição (upstream)'),
+            ('1.3', 'transporte_distribuicao_upstream', 'Transporte e distribuição upstream'),
+            ('1.3', 'residuos_solidos_operacao', 'Resíduos sólidos gerados na operação'),
+            ('1.3', 'residuos_solidos_operacao', 'Resíduos gerados nas operações'),
+            ('1.3', 'efluentes_liquidos', 'Efluentes líquidos gerados'),
+            ('1.3', 'viagens_a_negocios', 'Viagens a negócios'),
+            ('1.3', 'deslocamento_casa_trabalho', 'Deslocamento (casa-trabalho)'),
+            ('1.3', 'deslocamento_casa_trabalho', 'Deslocamento de funcionários'),
+            ('1.3', 'transporte_distribuicao_downstream', 'Transporte e distribuição (downstream)'),
+            ('1.3', 'transporte_distribuicao_downstream', 'Transporte e distribuição downstream')
+        ) AS t(cell_quadro, cell_codigo, alias_name)
+    ),
+    eligible AS MATERIALIZED (
+        SELECT
+            fe.scope_name,
+            fe.category_name,
+            fe.gas_id,
+            fe.gas_name,
+            fe.gas_formula,
+            fe.gas_is_biogenic,
+            fe.quantity_co2e
+        FROM vw_fact_emission fe
+        WHERE fe.enterprise_id = p_enterprise_id
+          AND fe.inventory_status = 'APPROVED'
+          AND fe.period_start = v_period_start
+          AND fe.period_end = v_period_end
+    ),
+    gas_matches AS (
+        SELECT DISTINCT
+            sk.cell_quadro,
+            sk.cell_codigo,
+            catalog_gas.gas_id
+        FROM skeleton sk
+        CROSS JOIN (
+            SELECT DISTINCT
+                el.gas_id,
+                el.gas_formula,
+                el.gas_name
+            FROM eligible el
+            WHERE el.gas_id IS NOT NULL
+        ) AS catalog_gas
+        WHERE sk.cell_eixo = 'GAS'
+          AND (
+              lower(btrim(catalog_gas.gas_formula)) = lower(sk.cell_codigo)
+              OR lower(btrim(catalog_gas.gas_name)) = lower(sk.cell_codigo)
+              OR (
+                  sk.cell_codigo IN ('HFCs', 'HFC')
+                  AND (
+                      lower(btrim(catalog_gas.gas_formula)) IN ('hfcs', 'hfc')
+                      OR lower(btrim(catalog_gas.gas_name)) IN ('hfcs', 'hfc')
+                  )
+              )
+              OR (
+                  sk.cell_codigo IN ('PFCs', 'PFC')
+                  AND (
+                      lower(btrim(catalog_gas.gas_formula)) IN ('pfcs', 'pfc')
+                      OR lower(btrim(catalog_gas.gas_name)) IN ('pfcs', 'pfc')
+                  )
+              )
+              OR (
+                  sk.cell_codigo = 'trifluorometil_pentafluoreto_enxofre'
+                  AND (
+                      lower(btrim(catalog_gas.gas_formula)) = 'sf5cf3'
+                      OR lower(btrim(catalog_gas.gas_name))
+                          = 'trifluorometil pentafluoreto de enxofre'
+                  )
+              )
+              OR (
+                  sk.cell_codigo = 'perfluorociclopropano'
+                  AND (
+                      lower(btrim(catalog_gas.gas_formula)) = 'c-c3f6'
+                      OR lower(btrim(catalog_gas.gas_name)) = 'perfluorociclopropano'
+                  )
+              )
+          )
+    ),
+    gas_values AS (
+        SELECT
+            sk.cell_quadro,
+            sk.cell_eixo,
+            sk.cell_codigo,
+            SUM(el.quantity_co2e) AS cell_valor
+        FROM skeleton sk
+        JOIN quadro_scope qs
+          ON qs.cell_quadro = sk.cell_quadro
+        JOIN gas_matches gm
+          ON gm.cell_quadro = sk.cell_quadro
+         AND gm.cell_codigo = sk.cell_codigo
+        JOIN eligible el
+          ON el.gas_id = gm.gas_id
+         AND el.gas_is_biogenic IS FALSE
+         AND lower(btrim(el.scope_name)) = qs.scope_key
+        WHERE sk.cell_eixo = 'GAS'
+        GROUP BY sk.cell_quadro, sk.cell_eixo, sk.cell_codigo
+    ),
+    category_values AS (
+        SELECT
+            sk.cell_quadro,
+            sk.cell_eixo,
+            sk.cell_codigo,
+            SUM(el.quantity_co2e) AS cell_valor
+        FROM skeleton sk
+        JOIN quadro_scope qs
+          ON qs.cell_quadro = sk.cell_quadro
+        JOIN category_alias ca
+          ON ca.cell_quadro = sk.cell_quadro
+         AND ca.cell_codigo = sk.cell_codigo
+        JOIN eligible el
+          ON el.gas_is_biogenic IS FALSE
+         AND lower(btrim(el.scope_name)) = qs.scope_key
+         AND lower(btrim(el.category_name)) = lower(btrim(ca.alias_name))
+        WHERE sk.cell_eixo = 'CATEGORIA'
+          AND sk.cell_codigo <> 'outras_escopo_iii'
+        GROUP BY sk.cell_quadro, sk.cell_eixo, sk.cell_codigo
+    ),
+    scope3_other_values AS (
+        SELECT
+            '1.3'::text AS cell_quadro,
+            'CATEGORIA'::text AS cell_eixo,
+            'outras_escopo_iii'::text AS cell_codigo,
+            SUM(el.quantity_co2e) AS cell_valor
+        FROM eligible el
+        WHERE el.gas_is_biogenic IS FALSE
+          AND lower(btrim(el.scope_name)) = 'scope 3'
+          AND (
+              el.category_name IS NULL
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM category_alias ca
+                  WHERE ca.cell_quadro = '1.3'
+                    AND lower(btrim(el.category_name)) = lower(btrim(ca.alias_name))
+              )
+          )
+        HAVING SUM(el.quantity_co2e) IS NOT NULL
+    ),
+    biogenic_category_values AS (
+        SELECT
+            sk.cell_quadro,
+            sk.cell_eixo,
+            sk.cell_codigo,
+            SUM(el.quantity_co2e) AS cell_valor
+        FROM skeleton sk
+        JOIN category_alias ca
+          ON ca.cell_quadro = '1.3'
+         AND ca.cell_codigo = sk.cell_codigo
+        JOIN eligible el
+          ON el.gas_is_biogenic IS TRUE
+         AND lower(btrim(el.scope_name)) = 'scope 3'
+         AND lower(btrim(el.category_name)) = lower(btrim(ca.alias_name))
+        WHERE sk.cell_quadro = '1.3'
+          AND sk.cell_eixo = 'BIOGENICO_EMISSAO'
+          AND sk.cell_codigo <> 'outras_escopo_iii'
+        GROUP BY sk.cell_quadro, sk.cell_eixo, sk.cell_codigo
+    ),
+    biogenic_scope3_other_values AS (
+        SELECT
+            '1.3'::text AS cell_quadro,
+            'BIOGENICO_EMISSAO'::text AS cell_eixo,
+            'outras_escopo_iii'::text AS cell_codigo,
+            SUM(el.quantity_co2e) AS cell_valor
+        FROM eligible el
+        WHERE el.gas_is_biogenic IS TRUE
+          AND lower(btrim(el.scope_name)) = 'scope 3'
+          AND (
+              el.category_name IS NULL
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM category_alias ca
+                  WHERE ca.cell_quadro = '1.3'
+                    AND lower(btrim(el.category_name)) = lower(btrim(ca.alias_name))
+              )
+          )
+        HAVING SUM(el.quantity_co2e) IS NOT NULL
+    ),
+    biogenic_15_values AS (
+        SELECT
+            '1.5'::text AS cell_quadro,
+            'BIOGENICO_EMISSAO'::text AS cell_eixo,
+            CASE lower(btrim(el.scope_name))
+                WHEN 'scope 1' THEN 'ESCOPO_I'
+                WHEN 'scope 2' THEN 'ESCOPO_II'
+            END AS cell_codigo,
+            SUM(el.quantity_co2e) AS cell_valor
+        FROM eligible el
+        WHERE el.gas_is_biogenic IS TRUE
+          AND lower(btrim(el.scope_name)) IN ('scope 1', 'scope 2')
+        GROUP BY 3
+    ),
+    cell_value AS (
+        SELECT * FROM gas_values
+        UNION ALL
+        SELECT * FROM category_values
+        UNION ALL
+        SELECT * FROM scope3_other_values
+        UNION ALL
+        SELECT * FROM biogenic_category_values
+        UNION ALL
+        SELECT * FROM biogenic_scope3_other_values
+        UNION ALL
+        SELECT * FROM biogenic_15_values
+    )
+    SELECT
+        sk.cell_quadro,
+        sk.cell_eixo,
+        sk.cell_codigo,
+        cv.cell_valor
+    FROM skeleton sk
+    LEFT JOIN cell_value cv
+      ON cv.cell_quadro = sk.cell_quadro
+     AND cv.cell_eixo = sk.cell_eixo
+     AND cv.cell_codigo = sk.cell_codigo;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_ghg_complete_declaration(integer) IS
+    'Returns the 84 manual cells of the complete GHG emission declaration (frames 1.1, 1.2, 1.3, 1.5) for one enterprise. Eligible facts are APPROVED inventories whose period is 1 Jan–31 Dec of the calendar year before CURRENT_DATE. valor is SUM(quantity_co2e) in tCO2e, or NULL when no fact matches. Does not return frame 1.4, spreadsheet automatic totals, reductions, or biogenic removals. Raises 22023 when enterprise_id is null and 23503 when the enterprise does not exist.';
+
 REVOKE ALL ON FUNCTION fn_dash_visible_units(integer, integer, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION fn_dash_generated_savings(integer, integer, integer[], integer, text, integer, numeric) FROM PUBLIC;
 REVOKE ALL ON FUNCTION fn_dash_analyses(integer, integer, integer[], integer, text, integer, numeric) FROM PUBLIC;
@@ -1225,6 +1565,7 @@ REVOKE ALL ON FUNCTION fn_dash_plants_table(integer, integer, integer[], integer
 REVOKE ALL ON FUNCTION fn_dash_production_alert(integer, integer, integer[], integer, text, numeric, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION fn_dash_emissions_series(integer, integer, integer, integer[], integer, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION fn_dash_emissions_by_scope(integer, integer, integer[], integer, text, numeric) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_ghg_complete_declaration(integer) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION fn_dash_visible_units(integer, integer, text) TO aether_app, aether_auditor, aether_admin;
 GRANT EXECUTE ON FUNCTION fn_dash_generated_savings(integer, integer, integer[], integer, text, integer, numeric) TO aether_app, aether_auditor, aether_admin;
@@ -1236,6 +1577,7 @@ GRANT EXECUTE ON FUNCTION fn_dash_plants_table(integer, integer, integer[], inte
 GRANT EXECUTE ON FUNCTION fn_dash_production_alert(integer, integer, integer[], integer, text, numeric, integer) TO aether_app, aether_auditor, aether_admin;
 GRANT EXECUTE ON FUNCTION fn_dash_emissions_series(integer, integer, integer, integer[], integer, text) TO aether_app, aether_auditor, aether_admin;
 GRANT EXECUTE ON FUNCTION fn_dash_emissions_by_scope(integer, integer, integer[], integer, text, numeric) TO aether_app, aether_auditor, aether_admin;
+GRANT EXECUTE ON FUNCTION fn_ghg_complete_declaration(integer) TO aether_app, aether_auditor, aether_admin;
 
 GRANT SELECT ON vw_dim_org_hierarchy, vw_fact_emission, vw_fact_reduction, vw_analytics_org_period
     TO aether_app, aether_auditor, aether_admin;
