@@ -127,8 +127,7 @@ INSERT INTO storage_files (id, name, path) VALUES
 INSERT INTO plans (id, name, description, price, duration_days, currency) VALUES
 (1, 'Aether Pulse', 'Até 10 funcionários, até 2 analistas/administradores e acompanhamento mensal.', 3300.00, 30, 'Reais'),
 (2, 'Aether Horizon', 'Recursos do Pulse, funcionários ilimitados e acompanhamento trimestral.', 9400.00, 90, 'Reais'),
-(3, 'Aether Essencial (MOCK)', 'Plano fictício para testes, até 5 funcionários e acompanhamento mensal.', 1500.00, 30, 'Reais'),
-(4, 'Aether Enterprise (MOCK)', 'Plano fictício para testes, funcionários ilimitados e acompanhamento personalizado.', 15000.00, 30, 'Reais');
+
 
 INSERT INTO gases (id, name, type, measurement, gwp) VALUES
 (1, 'Monóxido de Carbono', 'gás de emissão poluente', 'Moderado', 2),
@@ -145,13 +144,8 @@ INSERT INTO administrators (id, email, password) VALUES
 (1, 'admin.mock@aether.test', '$argon2id$MOCK_HASH_NOT_FOR_AUTHENTICATION');
 
 INSERT INTO permissions (id, name, description, url) VALUES
-(1, 'Visualizar dashboard', 'Acessar o painel principal', '/'),
-(2, 'Gerenciar funcionários', 'Cadastrar e consultar funcionários', '/funcionarios'),
-(3, 'Gerenciar unidades', 'Cadastrar e consultar unidades', '/unidades'),
-(4, 'Gerenciar inventários', 'Enviar e consultar inventários', '/inventarios'),
-(5, 'Gerenciar planos', 'Consultar planos e assinaturas', '/planos'),
-(6, 'Gerenciar permissões', 'Administrar permissões da empresa', '/permissoes'),
-(7, 'Consultar relatórios', 'Consultar relatórios ambientais e ROI', '/relatorios');
+(1, 'Admin da empresa', 'Cadastrar, consultar e gerenciar relátorios', '/gerente'),
+(2, 'Funcionário da empresa', 'Adicionar relatórios e vizualizar métricas', '/funcionarios');
 
 INSERT INTO parana_climate_seals (id, date_achievement, current_score) VALUES
 (1, '2024-12-15', 72.5),
@@ -170,11 +164,15 @@ INSERT INTO units (id, name, company_id, address_id, cnpj, cnae) VALUES
 INSERT INTO telephone_companies (id, telephone, company_id) VALUES
 (1, '+551130001001', 1), (2, '+551130001002', 2), (3, '+554130001003', 3);
 
+
 INSERT INTO permission_groups (id, name, company_id) VALUES
 (1, 'Admin da empresa (MOCK)', 1),
 (2, 'Gestor ambiental (MOCK)', 1),
 (3, 'Admin da empresa (MOCK)', 2),
-(4, 'Admin da empresa (MOCK)', 3);
+(4, 'Gestor ambiental (MOCK)', 2),
+(5, 'Admin da empresa (MOCK)', 3),
+(6, 'Gestor ambiental (MOCK)', 3);
+
 
 INSERT INTO sectors (id, name, description, unit_id, company_id) VALUES
 (1, 'Produção', 'Área de produção industrial (MOCK)', 1, 1),
@@ -182,11 +180,13 @@ INSERT INTO sectors (id, name, description, unit_id, company_id) VALUES
 (3, 'Utilidades', 'Energia, refrigeração e utilidades (MOCK)', 3, 3);
 
 
+
 INSERT INTO employees (id, cpf, company_id, permission_group_id, unit_id, sector_id, name, email, phone, password_hash, status, storage_file_id) VALUES
-(1, '12345678901', 1, 1, 1, 1, 'Ana Gestora (MOCK)', 'ana.gestora@exemplo.test', '+5511990000001', '$argon2id$MOCK_HASH_NOT_FOR_AUTHENTICATION', 'ACTIVE', 1),
+(1, '12345678901', 1, 1, 1, 1, 'Ana Administradora (MOCK)', 'ana.admina@exemplo.test', '+5511990000001', '$argon2id$MOCK_HASH_NOT_FOR_AUTHENTICATION', 'ACTIVE', 1),
 (2, '23456789012', 1, 2, 1, 1, 'Bruno Analista (MOCK)', 'bruno.analista@exemplo.test', '+5511990000002', '$argon2id$MOCK_HASH_NOT_FOR_AUTHENTICATION', 'ACTIVE', 2),
 (3, '34567890123', 2, 3, 2, 2, 'Carla Administradora (MOCK)', 'carla.admin@modelo.test', '+5511990000003', '$argon2id$MOCK_HASH_NOT_FOR_AUTHENTICATION', 'ACTIVE', 3),
-(4, '45678901234', 3, 4, 3, 3, 'Diego Responsável (MOCK)', 'diego.responsavel@verde.test', '+5541990000004', '$argon2id$MOCK_HASH_NOT_FOR_AUTHENTICATION', 'IN_VACATION', NULL);
+(4, '45678901234', 3, 5, 3, 3, 'Diego Responsável (MOCK)', 'diego.responsavel@verde.test', '+5541990000004', '$argon2id$MOCK_HASH_NOT_FOR_AUTHENTICATION', 'IN_VACATION', NULL);
+
 
 INSERT INTO employee_telephones (id, telephone, employee_id) VALUES
 (1, '+5511988880001', 1), (2, '+5511988880002', 2), (3, '+5511988880003', 3), (4, '+5541988880004', 4);
@@ -200,7 +200,7 @@ INSERT INTO password_recoveries (id, employee_id, code_hash, expires_at, attempt
 
 
 INSERT INTO subscriptions (id, company_id, plan_id, is_active, installments) VALUES
-(1, 1, 1, TRUE, TRUE), (2, 2, 2, TRUE, TRUE), (3, 3, 3, TRUE, FALSE);
+(1, 1, 1, TRUE, TRUE), (2, 2, 2, TRUE, TRUE), (3, 3, 1, TRUE, FALSE);
 
 INSERT INTO payments (id, currency, subscription_id, additional_use_value, due_date, payment_type) VALUES
 (1, 'Reais', 1, 250.00, CURRENT_DATE + 7, 'PIX'),
@@ -247,11 +247,7 @@ INSERT INTO contains (id, parana_climate_seal_id, company_id) VALUES
 
 
 INSERT INTO permission_group_permissions (id, permission_group_id, permission_id) VALUES
-(1, 1, 1), (2, 1, 2), (3, 1, 3), (4, 1, 4), (5, 1, 5), (6, 1, 6), (7, 1, 7),
-(8, 2, 1), (9, 2, 4), (10, 2, 7),
-(11, 3, 1), (12, 3, 2), (13, 3, 3), (14, 3, 4), (15, 3, 5), (16, 3, 6), (17, 3, 7),
-(18, 4, 1), (19, 4, 4), (20, 4, 7);
-
+(1, 1, 1), (2, 2, 2), (3, 3, 1), (4, 4, 2), (5, 5, 1), (6, 6, 2);
 
 SELECT setval(pg_get_serial_sequence('addresses', 'id'), COALESCE((SELECT MAX(id) FROM addresses), 1), true);
 SELECT setval(pg_get_serial_sequence('storage_files', 'id'), COALESCE((SELECT MAX(id) FROM storage_files), 1), true);
