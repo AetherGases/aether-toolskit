@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-ai-gateway" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-ai-sdk" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-analytics" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-core-api" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-docs" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-landing" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-mobile" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-toolskit" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-web-administrative" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/resources/aether-web-flow" vcs="Git" />
+  </component>
+</project>
