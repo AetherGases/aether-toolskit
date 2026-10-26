@@ -78,11 +78,11 @@ INSERT INTO gas (id, name, formula, is_biogenic, gwp) VALUES
 -- permission (catalog restricted to analytics visibility + backend enum patterns)
 INSERT INTO permission (id, name, description, pattern) VALUES
     (1, 'user:analytics:visibility:high', 'High analytics visibility across the enterprise hierarchy', 'user:analytics:visibility:high'),
-    (2, 'inventory:analysis', 'Inventory analysis access', '/api/inventories/(pending|reviewed)'),
-    (3, 'inventory:register', 'Inventory create and edit access', '/api/inventories/register'),
+    (2, 'inventory:analysis', 'Inventory analysis access', '/api/inventories/(count|pending(/\d+/(approve|reject))?|reviewed(/(last|\d+))?)'),
+    (3, 'inventory:register', 'Inventory create and edit access', '/api/inventories(/(count|mine(/(last|\d+))?))?'),
     (4, 'inventory:generate', 'Generate an output report', '/api/inventories/generate'),
-    (5, 'calculator:gases', 'Gases forecast calculator access', '/api/calculator/reduction/forecast'),
-    (6, 'calculator:roi', 'Investment forecast calculator access', '/api/calculator/cost-reduction/forecast'),
+    (5, 'calculator:gases', 'Gases forecast calculator access', '(/api/calculator)?/(gases|reduction/forecast)'),
+    (6, 'calculator:roi', 'Investment forecast calculator access', '(/api/calculator)?/cost-reduction/forecast'),
     (7, 'chatbot', 'Chatbot access', 'chatbot');
 
 -- permission_group (one default group per enterprise + one global QA group)
