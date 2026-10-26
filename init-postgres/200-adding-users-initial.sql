@@ -80,7 +80,8 @@ INSERT INTO permission (id, name, description, pattern) VALUES
     (1, 'user:analytics:visibility:high', 'High analytics visibility across the enterprise hierarchy', 'user:analytics:visibility:high'),
     (2, 'inventory:analysis', 'Inventory analysis access', 'inventory:analysis'),
     (3, 'inventory:edit', 'Inventory create and edit access', 'inventory:edit'),
-    (4, 'calculator', 'Calculator access', 'calculator'),
+    (4, 'calculator:gases', 'Gases forecast calculator access', 'calculator:gases'),
+    (4, 'calculator:roi', 'Investment forecast calculator access', 'calculator:roi'),
     (5, 'chatbot', 'Chatbot access', 'chatbot');
 
 -- permission_group (one default group per enterprise + one global QA group)
