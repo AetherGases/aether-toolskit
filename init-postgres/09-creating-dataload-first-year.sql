@@ -3,7 +3,6 @@
 DATALOAD 1 - DADOS REAIS 
 ============================================================
 
-/*
 -- PLANOS
 INSERT INTO plans (id, name, description, price, duration_days, currency)
 VALUES
@@ -126,7 +125,7 @@ INSERT INTO storage_files (id, name, path) VALUES
 
 INSERT INTO plans (id, name, description, price, duration_days, currency) VALUES
 (1, 'Aether Pulse', 'Até 10 funcionários, até 2 analistas/administradores e acompanhamento mensal.', 3300.00, 30, 'Reais'),
-(2, 'Aether Horizon', 'Recursos do Pulse, funcionários ilimitados e acompanhamento trimestral.', 9400.00, 90, 'Reais'),
+(2, 'Aether Horizon', 'Recursos do Pulse, funcionários ilimitados e acompanhamento trimestral.', 9400.00, 90, 'Reais');
 
 
 INSERT INTO gases (id, name, type, measurement, gwp) VALUES
@@ -194,7 +193,7 @@ INSERT INTO employee_telephones (id, telephone, employee_id) VALUES
 INSERT INTO contracts (id, employee_id, company_id) VALUES
 (1, 1, 1), (2, 2, 1), (3, 3, 2), (4, 4, 3);
 
-INSERT INTO password_recoveries (id, employee_id, code_hash, expires_at, attempts, used_at) VALUES
+INSERT INTO password_recoveries (id, employee_id, code_hash, expires_at, attempts, used_at) OVERRIDING SYSTEM VALUE VALUES
 (1, 1, repeat('a', 64), CURRENT_TIMESTAMP + INTERVAL '15 minutes', 0, NULL),
 (2, 2, repeat('b', 64), CURRENT_TIMESTAMP + INTERVAL '15 minutes', 1, NULL);
 
