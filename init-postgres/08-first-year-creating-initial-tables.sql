@@ -39,7 +39,6 @@ CREATE TABLE companies (
     registration_date DATE,
     tax_id VARCHAR(50),
     email VARCHAR(255),
-    address_id INT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
