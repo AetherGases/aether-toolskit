@@ -2,8 +2,10 @@
 ============================================================
 DATALOAD 1 - DADOS REAIS 
 ============================================================
+*/ 
 
-/*
+BEGIN;
+
 -- PLANOS
 INSERT INTO plans (id, name, description, price, duration_days, currency)
 VALUES
@@ -97,15 +99,6 @@ SELECT setval(
     COALESCE((SELECT MAX(id) FROM gases), 1),
     EXISTS (SELECT 1 FROM gases)
 );
-*/
-
-
-/*
-============================================================
-FIM DO DATALOAD REAL
-============================================================
-*/
-
 
 -- ==========================================================
 -- DATALOAD 2 - DADOS REAIS + MOCKS PARA TESTES
@@ -126,7 +119,7 @@ INSERT INTO storage_files (id, name, path) VALUES
 
 INSERT INTO plans (id, name, description, price, duration_days, currency) VALUES
 (1, 'Aether Pulse', 'Até 10 funcionários, até 2 analistas/administradores e acompanhamento mensal.', 3300.00, 30, 'Reais'),
-(2, 'Aether Horizon', 'Recursos do Pulse, funcionários ilimitados e acompanhamento trimestral.', 9400.00, 90, 'Reais'),
+(2, 'Aether Horizon', 'Recursos do Pulse, funcionários ilimitados e acompanhamento trimestral.', 9400.00, 90, 'Reais');
 
 
 INSERT INTO gases (id, name, type, measurement, gwp) VALUES
@@ -188,9 +181,6 @@ INSERT INTO employees (id, cpf, company_id, permission_group_id, unit_id, sector
 (4, '45678901234', 3, 5, 3, 3, 'Diego Responsável (MOCK)', 'diego.responsavel@verde.test', '+5541990000004', '$argon2id$MOCK_HASH_NOT_FOR_AUTHENTICATION', 'IN_VACATION', NULL);
 
 
-INSERT INTO employee_telephones (id, telephone, employee_id) VALUES
-(1, '+5511988880001', 1), (2, '+5511988880002', 2), (3, '+5511988880003', 3), (4, '+5541988880004', 4);
-
 INSERT INTO contracts (id, employee_id, company_id) VALUES
 (1, 1, 1), (2, 2, 1), (3, 3, 2), (4, 4, 3);
 
@@ -248,35 +238,6 @@ INSERT INTO contains (id, parana_climate_seal_id, company_id) VALUES
 
 INSERT INTO permission_group_permissions (id, permission_group_id, permission_id) VALUES
 (1, 1, 1), (2, 2, 2), (3, 3, 1), (4, 4, 2), (5, 5, 1), (6, 6, 2);
-
-SELECT setval(pg_get_serial_sequence('addresses', 'id'), COALESCE((SELECT MAX(id) FROM addresses), 1), true);
-SELECT setval(pg_get_serial_sequence('storage_files', 'id'), COALESCE((SELECT MAX(id) FROM storage_files), 1), true);
-SELECT setval(pg_get_serial_sequence('companies', 'id'), COALESCE((SELECT MAX(id) FROM companies), 1), true);
-SELECT setval(pg_get_serial_sequence('units', 'id'), COALESCE((SELECT MAX(id) FROM units), 1), true);
-SELECT setval(pg_get_serial_sequence('telephone_companies', 'id'), COALESCE((SELECT MAX(id) FROM telephone_companies), 1), true);
-SELECT setval(pg_get_serial_sequence('sectors', 'id'), COALESCE((SELECT MAX(id) FROM sectors), 1), true);
-SELECT setval(pg_get_serial_sequence('permission_groups', 'id'), COALESCE((SELECT MAX(id) FROM permission_groups), 1), true);
-SELECT setval(pg_get_serial_sequence('administrators', 'id'), COALESCE((SELECT MAX(id) FROM administrators), 1), true);
-SELECT setval(pg_get_serial_sequence('employees', 'id'), COALESCE((SELECT MAX(id) FROM employees), 1), true);
-SELECT setval(pg_get_serial_sequence('employee_telephones', 'id'), COALESCE((SELECT MAX(id) FROM employee_telephones), 1), true);
-SELECT setval(pg_get_serial_sequence('password_recoveries', 'id'), COALESCE((SELECT MAX(id) FROM password_recoveries), 1), true);
-SELECT setval(pg_get_serial_sequence('contracts', 'id'), COALESCE((SELECT MAX(id) FROM contracts), 1), true);
-SELECT setval(pg_get_serial_sequence('inventories', 'id'), COALESCE((SELECT MAX(id) FROM inventories), 1), true);
-SELECT setval(pg_get_serial_sequence('plans', 'id'), COALESCE((SELECT MAX(id) FROM plans), 1), true);
-SELECT setval(pg_get_serial_sequence('subscriptions', 'id'), COALESCE((SELECT MAX(id) FROM subscriptions), 1), true);
-SELECT setval(pg_get_serial_sequence('payments', 'id'), COALESCE((SELECT MAX(id) FROM payments), 1), true);
-SELECT setval(pg_get_serial_sequence('roi_analyses', 'id'), COALESCE((SELECT MAX(id) FROM roi_analyses), 1), true);
-SELECT setval(pg_get_serial_sequence('roi_projection_years', 'id'), COALESCE((SELECT MAX(id) FROM roi_projection_years), 1), true);
-SELECT setval(pg_get_serial_sequence('gases', 'id'), COALESCE((SELECT MAX(id) FROM gases), 1), true);
-SELECT setval(pg_get_serial_sequence('sector_gases', 'id'), COALESCE((SELECT MAX(id) FROM sector_gases), 1), true);
-SELECT setval(pg_get_serial_sequence('gas_reductions', 'id'), COALESCE((SELECT MAX(id) FROM gas_reductions), 1), true);
-SELECT setval(pg_get_serial_sequence('reduction_gases', 'id'), COALESCE((SELECT MAX(id) FROM reduction_gases), 1), true);
-SELECT setval(pg_get_serial_sequence('gas_reduction_inventories', 'id'), COALESCE((SELECT MAX(id) FROM gas_reduction_inventories), 1), true);
-SELECT setval(pg_get_serial_sequence('gas_reduction_sectors', 'id'), COALESCE((SELECT MAX(id) FROM gas_reduction_sectors), 1), true);
-SELECT setval(pg_get_serial_sequence('parana_climate_seals', 'id'), COALESCE((SELECT MAX(id) FROM parana_climate_seals), 1), true);
-SELECT setval(pg_get_serial_sequence('contains', 'id'), COALESCE((SELECT MAX(id) FROM contains), 1), true);
-SELECT setval(pg_get_serial_sequence('permissions', 'id'), COALESCE((SELECT MAX(id) FROM permissions), 1), true);
-SELECT setval(pg_get_serial_sequence('permission_group_permissions', 'id'), COALESCE((SELECT MAX(id) FROM permission_group_permissions), 1), true);
 
 COMMIT;
 
