@@ -34,3 +34,8 @@ INSERT INTO permissions (id, name, description, pattern) VALUES
     (6, 'calculator:roi', 'Investment forecast calculator access', '(/api/calculator)?/cost-reduction/forecast'),
     (7, 'chatbot', 'Chatbot access', 'chatbot');
 
+SELECT setval(pg_get_serial_sequence('plans', 'id'), (SELECT max(id) FROM plans));
+SELECT setval(pg_get_serial_sequence('gases', 'id'), (SELECT max(id) FROM gases));
+SELECT setval(pg_get_serial_sequence('permissions', 'id'), (SELECT max(id) FROM permissions));
+
+
