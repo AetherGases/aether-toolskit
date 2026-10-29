@@ -42,7 +42,6 @@ CREATE TABLE companies (
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (address_id) REFERENCES addresses (id)
 );
 
 CREATE TABLE units (
