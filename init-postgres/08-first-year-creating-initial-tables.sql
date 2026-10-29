@@ -358,3 +358,7 @@ CREATE TABLE permission_group_permissions (
     FOREIGN KEY (permission_id) REFERENCES permissions (id),
     FOREIGN KEY (permission_group_id) REFERENCES permission_groups (id)
 );
+
+ALTER TABLE permission_group_permissions ADD CONSTRAINT uq_permission_group_permission UNIQUE (permission_group_id, permission_id);
+
+ALTER TABLE permission_group_permissions ADD CONSTRAINT uq_permission_group_permission UNIQUE (permission_group_id, permission_id);
