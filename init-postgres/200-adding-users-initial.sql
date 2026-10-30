@@ -83,14 +83,16 @@ INSERT INTO permission (id, name, description, pattern) VALUES
     (4, 'inventory:generate', 'Generate an output report', '/api/inventories/generate'),
     (5, 'calculator:gases', 'Gases forecast calculator access', '(/api/calculator)?/(gases|reduction/forecast)'),
     (6, 'calculator:roi', 'Investment forecast calculator access', '(/api/calculator)?/cost-reduction/forecast'),
-    (7, 'chatbot', 'Chatbot access', 'chatbot');
+    (7, 'chatbot', 'Chatbot access', 'chatbot'),
+    (8, 'Gerenciar funcionários', 'Employee management; ms-auth resolves the administrator role from this name', 'employee:manage');
 
 -- permission_group (one default group per enterprise + one global QA group)
 INSERT INTO permission_group (id, description, id_enterprise) VALUES
     (1, 'Grupo padrão Aurora', 1),
     (2, 'Grupo padrão Horizonte', 2),
     (3, 'Grupo padrão Vale Circular', 3),
-    (4, 'Grupo global QA', NULL);
+    (4, 'Grupo global QA', NULL),
+    (501, 'Grupo global Administrador', NULL);
 
 -- permission_group_permission
 -- analytics visibility only on Aurora default group; remaining catalog on every group
@@ -133,7 +135,7 @@ INSERT INTO employee (id, cpf, name, email, phone, password_hash, employee_statu
     (13, '90000000013', 'Caio Marcos', 'caiomarcos231@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 1, 4),
     (14, '90000000014', 'Vinicius Boas', 'vinicius.vboas1@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 5, 4),
     (15, '90000000015', 'Isabelly', 'isabelly1799@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 9, 4),
-    (16, '90000000016', 'Fernanda Nagata', 'fernanda.nogueira.nagata@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 2, 4),
+    (16, '90000000016', 'Fernanda Nagata', 'fernanda.nogueira.nagata@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 2, 501),
     (17, '90000000017', 'Casarini Pandavas', 'casarini.pandavas@gmail.com', NULL, '$argon2id$v=19$m=16384,t=2,p=1$kEfZ8ZlOia6pq+HuaGut8g$pEOpRYibo8qJvClpW7iVF87yJJj3NLR3Jw0/hz5Gjhs', 'ACTIVE', 6, 4);
 
 -- inventory
@@ -9091,6 +9093,19 @@ INSERT INTO emission (id, quantity_co2e, methodology_description, supplier_data_
     (505, 15.0, 'Serviços de nuvem', 40, 1, 3, 24, 8),
     (506, 9.8, 'Eventos corporativos', 55, 2, 3, 25, 8),
     (507, 4.4, 'NF3 em fabricação', 70, 37, 1, 14, 4);
+
+-- All catalog permissions on every group, so every employee has full access.
+-- 'Gerenciar funcionários' (administrator role) is only granted to the administrator group (501).
+DELETE FROM permission_group_permission;
+
+INSERT INTO permission_group_permission (id, id_permission, id_permission_group)
+SELECT
+    ROW_NUMBER() OVER (ORDER BY pg.id, p.id),
+    p.id,
+    pg.id
+FROM permission p
+CROSS JOIN permission_group pg
+WHERE p.name <> 'Gerenciar funcionários' OR pg.id = 501;
 
 SELECT setval(pg_get_serial_sequence('plan', 'id'), COALESCE((SELECT MAX(id) FROM plan), 1), TRUE);
 SELECT setval(pg_get_serial_sequence('plan_subscription', 'id'), COALESCE((SELECT MAX(id) FROM plan_subscription), 1), TRUE);
