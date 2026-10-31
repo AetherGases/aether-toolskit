@@ -361,4 +361,4 @@ CREATE TABLE permission_group_permissions (
 
 ALTER TABLE permission_group_permissions ADD CONSTRAINT uq_permission_group_permission UNIQUE (permission_group_id, permission_id);
 
-ALTER TABLE permission_group_permissions ADD CONSTRAINT uq_permission_group_permission UNIQUE (permission_group_id, permission_id);
+
