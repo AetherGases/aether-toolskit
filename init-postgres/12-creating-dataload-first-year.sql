@@ -1,3 +1,5 @@
+\connect dbAether1Year
+
 /*
 ============================================================
 DATALOAD - DADOS REAIS 
@@ -39,3 +41,4 @@ SELECT setval(pg_get_serial_sequence('gases', 'id'), (SELECT max(id) FROM gases)
 SELECT setval(pg_get_serial_sequence('permissions', 'id'), (SELECT max(id) FROM permissions));
 
 
+COMMIT;
