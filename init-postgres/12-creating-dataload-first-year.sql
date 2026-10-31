@@ -11,8 +11,8 @@ BEGIN;
 -- PLANOS
 INSERT INTO plans (id, name, description, price, duration_days, currency)
 VALUES
-(1,'Aether Pulse','Quantidade de cadastro limitada a 10 funcionários; quantidade de analistas e administradores limitada a 2; acompanhamento mensal',3300.00,30,'Reais'),
-(2,'Aether Horizon','Tudo do plano Aether Pulse; quantidade de cadastro de funcionários ilimitada; acompanhamento trimestral',9400.00,90,'Reais');
+(10001,'Aether Pulse','Quantidade de cadastro limitada a 10 funcionários; quantidade de analistas e administradores limitada a 2; acompanhamento mensal',3300.00,30,'Reais'),
+(10002,'Aether Horizon','Tudo do plano Aether Pulse; quantidade de cadastro de funcionários ilimitada; acompanhamento trimestral',9400.00,90,'Reais');
 
 
 -- GASES 
@@ -26,7 +26,7 @@ VALUES
 (6,'Óxidos de Nitrogênio','Gás de emissão poluente','Alto',298);
 
 
---PERMISSOES
+--PERMISSOES (ids 1-7 are the same catalog seeded in dbAether2Year: the RPA upserts them by id with identical values)
 INSERT INTO permissions (id, name, description, pattern) VALUES
     (1, 'user:analytics:visibility:high', 'High analytics visibility across the enterprise hierarchy', 'user:analytics:visibility:high'),
     (2, 'inventory:analysis', 'Inventory analysis access', '/api/inventories/(count|pending(/\d+/(approve|reject))?|reviewed(/(last|\d+))?)'),
@@ -36,9 +36,26 @@ INSERT INTO permissions (id, name, description, pattern) VALUES
     (6, 'calculator:roi', 'Investment forecast calculator access', '(/api/calculator)?/cost-reduction/forecast'),
     (7, 'chatbot', 'Chatbot access', 'chatbot');
 
-SELECT setval(pg_get_serial_sequence('plans', 'id'), (SELECT max(id) FROM plans));
 SELECT setval(pg_get_serial_sequence('gases', 'id'), (SELECT max(id) FROM gases));
-SELECT setval(pg_get_serial_sequence('permissions', 'id'), (SELECT max(id) FROM permissions));
+
+-- Ids up to 10000 belong to dbAether2Year, which the RPA syncs both ways.
+-- Rows created in this database start at 10001 so they never collide with them.
+DO $$
+DECLARE
+    t text;
+BEGIN
+    FOREACH t IN ARRAY ARRAY[
+        'addresses', 'storage_files', 'permissions', 'plans', 'companies',
+        'permission_groups', 'units', 'sectors', 'permission_group_permissions',
+        'employees', 'subscriptions'
+    ] LOOP
+        EXECUTE format(
+            'SELECT setval(pg_get_serial_sequence(%L, ''id''), GREATEST((SELECT max(id) FROM %I), 10000))',
+            t, t
+        );
+    END LOOP;
+END
+$$;
 
 
 COMMIT;
