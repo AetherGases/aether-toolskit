@@ -294,7 +294,8 @@ CREATE TABLE reduction (
 CREATE TABLE reported_problem(
     id SERIAL,
     category PROBLEM_CATEGORY,
-    description VARCHAR(100),
+    description VARCHAR(500),
+    screen VARCHAR(50),
     id_storage_file INTEGER,
     CONSTRAINT pk_reported_problem PRIMARY KEY (id)
 );
