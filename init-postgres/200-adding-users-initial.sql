@@ -47,9 +47,9 @@ INSERT INTO department (id, name, description, id_unit) VALUES
 
 -- scope
 INSERT INTO scope (id, name) VALUES
-    (1, 'Scope 1'),
-    (2, 'Scope 2'),
-    (3, 'Scope 3');
+    (1, 'Escopo 1'),
+    (2, 'Escopo 2'),
+    (3, 'Escopo 3');
 
 -- category
 INSERT INTO category (id, name, classification) VALUES

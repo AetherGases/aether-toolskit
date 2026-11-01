@@ -1319,9 +1319,9 @@ BEGIN
     quadro_scope AS (
         SELECT *
         FROM (VALUES
-            ('1.1'::text, 'scope 1'::text),
-            ('1.2'::text, 'scope 2'::text),
-            ('1.3'::text, 'scope 3'::text)
+            ('1.1'::text, 'escopo 1'::text),
+            ('1.2'::text, 'escopo 2'::text),
+            ('1.3'::text, 'escopo 3'::text)
         ) AS t(cell_quadro, scope_key)
     ),
     category_alias AS (
@@ -1461,7 +1461,7 @@ BEGIN
             SUM(el.quantity_co2e) AS cell_valor
         FROM eligible el
         WHERE el.gas_is_biogenic IS FALSE
-          AND lower(btrim(el.scope_name)) = 'scope 3'
+          AND lower(btrim(el.scope_name)) = 'escopo 3'
           AND (
               el.category_name IS NULL
               OR NOT EXISTS (
@@ -1485,7 +1485,7 @@ BEGIN
          AND ca.cell_codigo = sk.cell_codigo
         JOIN eligible el
           ON el.gas_is_biogenic IS TRUE
-         AND lower(btrim(el.scope_name)) = 'scope 3'
+         AND lower(btrim(el.scope_name)) = 'escopo 3'
          AND lower(btrim(el.category_name)) = lower(btrim(ca.alias_name))
         WHERE sk.cell_quadro = '1.3'
           AND sk.cell_eixo = 'BIOGENICO_EMISSAO'
@@ -1500,7 +1500,7 @@ BEGIN
             SUM(el.quantity_co2e) AS cell_valor
         FROM eligible el
         WHERE el.gas_is_biogenic IS TRUE
-          AND lower(btrim(el.scope_name)) = 'scope 3'
+          AND lower(btrim(el.scope_name)) = 'escopo 3'
           AND (
               el.category_name IS NULL
               OR NOT EXISTS (
@@ -1517,13 +1517,13 @@ BEGIN
             '1.5'::text AS cell_quadro,
             'BIOGENICO_EMISSAO'::text AS cell_eixo,
             CASE lower(btrim(el.scope_name))
-                WHEN 'scope 1' THEN 'ESCOPO_I'
-                WHEN 'scope 2' THEN 'ESCOPO_II'
+                WHEN 'escopo 1' THEN 'ESCOPO_I'
+                WHEN 'escopo 2' THEN 'ESCOPO_II'
             END AS cell_codigo,
             SUM(el.quantity_co2e) AS cell_valor
         FROM eligible el
         WHERE el.gas_is_biogenic IS TRUE
-          AND lower(btrim(el.scope_name)) IN ('scope 1', 'scope 2')
+          AND lower(btrim(el.scope_name)) IN ('escopo 1', 'escopo 2')
         GROUP BY 3
     ),
     cell_value AS (
