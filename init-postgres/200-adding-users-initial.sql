@@ -78,7 +78,7 @@ INSERT INTO gas (id, name, formula, is_biogenic, gwp) VALUES
 -- permission (catalog restricted to analytics visibility + backend enum patterns)
 INSERT INTO permission (id, name, description, pattern) VALUES
     (1, 'user:analytics:visibility:high', 'High analytics visibility across the enterprise hierarchy', 'user:analytics:visibility:high'),
-    (2, 'inventory:analysis', 'Inventory analysis access', '/api/inventories/(count|pending(/\d+/(approve|reject))?|reviewed(/(last|\d+))?)'),
+    (2, 'inventory:analysis', 'Inventory analysis access', '/api/inventories/(count|pending(/\d+/(approve|reject))?|reviewed(/(last|\d+))?|\d+/analysis)'),
     (3, 'inventory:register', 'Inventory create and edit access', '/api/inventories(/(count|mine(/(last|\d+))?))?'),
     (4, 'inventory:generate', 'Generate an output report', '/api/inventories/generate'),
     (5, 'calculator:gases', 'Gases forecast calculator access', '(/api/calculator)?/(gases|reduction/forecast)'),
