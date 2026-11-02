@@ -1,11 +1,80 @@
-# aether-toolskit
-Ambiente para orquestração dos containeres utilizados pelo projeto Aether, onde concentram-se containeres do Docker que permitem a execução e teste de todas as APIS do projeto, além de ser um facilitador para clonar todos os repositórios.
+# Aether Toolskit
 
-### Como clonar todos os repositórios?
+Ambiente local e **fonte do schema de banco de dados** do [Aether](https://github.com/AetherGases). O `compose.yaml` sobe PostgreSQL, MongoDB e Redis já inicializados (tabelas, funções, views analíticas, dados fictícios e gatilhos do RPA), o que basta para rodar e testar os microsserviços na sua máquina.
+
+Também documenta o banco (backup, recuperação e otimização de consultas) e reúne um script para clonar todos os repositórios.
+
+## Começando
+
+Pré-requisitos: Docker com Compose.
+
+```bash
+git clone https://github.com/AetherGases/aether-toolskit.git
+cd aether-toolskit
+cp .env.example .env     # ajuste senhas e portas se quiser
+docker compose up -d
 ```
+
+| Serviço | Container | Imagem | Porta padrão do `compose.yaml` |
+| --- | --- | --- | --- |
+| PostgreSQL | `aether_postgres` | `postgres:16.10` | `5432` (`POSTGRES_PORT`) |
+| MongoDB | `aether_mongo` | `mongo:8.0.13` | `27017` (`MONGO_PORT`) |
+| Redis | `aether_redis` | `redis:8.2` (com `appendonly`) | `6379` (`REDIS_PORT`) |
+
+Os scripts em `init-postgres/` e `init-mongo/` rodam **apenas na primeira inicialização** do volume. Para recriar do zero: `docker compose down -v && docker compose up -d`.
+
+> O `.env.example` traz portas diferentes das padrão (`5435`, `27018` e `6380`) para não colidir com bancos já instalados na máquina. Use os mesmos valores nos `.env` dos serviços. Sem `.env`, o Compose usa os padrões da tabela e as credenciais `sa` / `password`.
+
+## O que é criado
+
+Dois bancos PostgreSQL convivem de propósito, e o [aether-rpa](https://github.com/AetherGases/aether-rpa) os mantém sincronizados:
+
+| Banco | Origem | Usado por |
+| --- | --- | --- |
+| `dbAether1Year` | Modelo do 1º ano (cadastro) | [aether-web-administrative](https://github.com/AetherGases/aether-web-administrative) e o outbox do RPA |
+| `dbAether2Year` | Modelo normalizado (3FN) do 2º ano | Microsserviços Java, BI e auditoria |
+
+Ordem dos scripts de `init-postgres/` (o Postgres executa em ordem alfabética):
+
+| Script | Conteúdo |
+| --- | --- |
+| `01` | Criação dos dois bancos |
+| `02` | Tabelas e enums do 2º ano (escopos, categorias, gases, inventários, emissões, reduções, selo) |
+| `03` | Auditoria e logs, com mascaramento de dados sensíveis |
+| `04` | Funções e procedures (registrar emissão e redução, totais por inventário) |
+| `05` | Camada analítica: views de fatos (`vw_fact_emission`, `vw_fact_reduction`), hierarquia e totais por período |
+| `06` | Índices para as consultas analíticas |
+| `07` | Catálogo de metadados (domínio, finalidade, sensibilidade) |
+| `08` (`.legacy`) | Versão antiga do schema do 1º ano. Não é executada |
+| `10` | Banco do 1º ano (MVP) |
+| `11` | Monitoramento de usuários ativos por dia (DAU) |
+| `12` | Carga inicial do 1º ano (planos, gases, permissões) |
+| `13` | **Outbox e triggers do RPA** nos dois bancos |
+| `200` | Dados fictícios para desenvolvimento e BI |
+| `201` | Privilégios dos papéis (servlet, usuários) |
+
+O MongoDB recebe o banco `dbAether` com as coleções iniciais (`init-mongo/init.js`), usado pelas sessões de IA e pelas notificações.
+
+## Clonar todos os repositórios
+
+```powershell
 ./scripts/repos.ps1
 ```
-Esse comando clonará todos os repositórios do projeto para a pasta resources
+
+Clona os repositórios do projeto em `resources/`. O script é PowerShell (use `pwsh` no Linux ou macOS).
+
+> **Atenção:** a lista em `scripts/repos.ps1` está defasada. Ela ainda inclui `aether-analytics` (hoje `aether-bi`), `aether-landing` e `aether-user-experience` (não encontrados na organização) e `aether-core-api` (arquivado e privado), e não inclui `aether-bi`, `aether-infra` (privado) nem o `.github`. O `git clone` desses itens falha, mas o restante é clonado. Veja o [perfil da organização](https://github.com/AetherGases) para a lista atual.
+
+## Documentação operacional
+
+- [`docs/backup-recovery.md`](docs/backup-recovery.md): o que proteger, política de backup, recuperação total, de uma tabela e por ponto no tempo, e o passo de pós-restauração do RPA.
+- [`docs/query-optimization.md`](docs/query-optimization.md): método e resultados da otimização das consultas analíticas.
+
+## Ao alterar o schema
+
+1. Edite o script SQL correspondente aqui. O Hibernate dos microsserviços roda com `ddl-auto: validate` e nunca altera o banco.
+2. Se a mudança envolver uma das 11 tabelas replicadas, atualize também o `13-rpa-outbox-triggers.sql` e o `src/definition.py` do `aether-rpa`.
+3. Reflita a mudança nas entidades JPA dos microsserviços afetados.
 
 ## Justificativa do projeto
 
