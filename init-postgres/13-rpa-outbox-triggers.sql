@@ -2,6 +2,12 @@
 -- Installed here by the database owner, since the rpa_aether role does not own
 -- the business tables and cannot drop their triggers.
 -- Keep the table lists in sync with TABLE_ORDER / table_name_b in aether-rpa/src/definition.py.
+--
+-- Inserts and updates enqueue one outbox row per changed row, with its key in
+-- row_pk ({"id": 1}), so the worker copies only those rows. Statement-level
+-- triggers read the changed rows from the transition table new_rows. Safe to
+-- run again on an existing database: it replaces the older per-statement trigger
+-- (aether_rpa_write_<table>, row_pk NULL) that made the worker copy whole tables.
 
 \connect dbAether1Year
 
@@ -15,13 +21,19 @@ CREATE TABLE IF NOT EXISTS rpa_outbox (
 );
 
 CREATE OR REPLACE FUNCTION aether_rpa_enqueue_write() RETURNS trigger AS $$
+DECLARE
+    queued integer;
 BEGIN
     IF current_setting('application_name', true) = 'aether-rpa' THEN
         RETURN NULL;
     END IF;
-    INSERT INTO rpa_outbox (table_name, operation)
-    VALUES (TG_TABLE_NAME, lower(TG_OP));
-    PERFORM pg_notify('aether_rpa', TG_TABLE_NAME);
+    INSERT INTO rpa_outbox (table_name, operation, row_pk)
+    SELECT TG_TABLE_NAME, lower(TG_OP), jsonb_build_object('id', id)
+    FROM new_rows;
+    GET DIAGNOSTICS queued = ROW_COUNT;
+    IF queued > 0 THEN
+        PERFORM pg_notify('aether_rpa', TG_TABLE_NAME);
+    END IF;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
@@ -56,9 +68,15 @@ BEGIN
         'subscriptions'
     ]
     LOOP
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', 'aether_rpa_write_' || t, t);
+        -- A transition table cannot be shared by several events: one trigger each.
         EXECUTE format(
-            'CREATE OR REPLACE TRIGGER %I AFTER INSERT OR UPDATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION aether_rpa_enqueue_write()',
-            'aether_rpa_write_' || t, t
+            'CREATE OR REPLACE TRIGGER %I AFTER INSERT ON %I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION aether_rpa_enqueue_write()',
+            'aether_rpa_insert_' || t, t
+        );
+        EXECUTE format(
+            'CREATE OR REPLACE TRIGGER %I AFTER UPDATE ON %I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION aether_rpa_enqueue_write()',
+            'aether_rpa_update_' || t, t
         );
         EXECUTE format(
             'CREATE OR REPLACE TRIGGER %I AFTER DELETE ON %I FOR EACH ROW EXECUTE FUNCTION aether_rpa_enqueue_delete()',
@@ -84,13 +102,19 @@ CREATE TABLE IF NOT EXISTS rpa_outbox (
 );
 
 CREATE OR REPLACE FUNCTION aether_rpa_enqueue_write() RETURNS trigger AS $$
+DECLARE
+    queued integer;
 BEGIN
     IF current_setting('application_name', true) = 'aether-rpa' THEN
         RETURN NULL;
     END IF;
-    INSERT INTO rpa_outbox (table_name, operation)
-    VALUES (TG_TABLE_NAME, lower(TG_OP));
-    PERFORM pg_notify('aether_rpa', TG_TABLE_NAME);
+    INSERT INTO rpa_outbox (table_name, operation, row_pk)
+    SELECT TG_TABLE_NAME, lower(TG_OP), jsonb_build_object('id', id)
+    FROM new_rows;
+    GET DIAGNOSTICS queued = ROW_COUNT;
+    IF queued > 0 THEN
+        PERFORM pg_notify('aether_rpa', TG_TABLE_NAME);
+    END IF;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
@@ -125,9 +149,14 @@ BEGIN
         'plan_subscription'
     ]
     LOOP
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', 'aether_rpa_write_' || t, t);
         EXECUTE format(
-            'CREATE OR REPLACE TRIGGER %I AFTER INSERT OR UPDATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION aether_rpa_enqueue_write()',
-            'aether_rpa_write_' || t, t
+            'CREATE OR REPLACE TRIGGER %I AFTER INSERT ON %I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION aether_rpa_enqueue_write()',
+            'aether_rpa_insert_' || t, t
+        );
+        EXECUTE format(
+            'CREATE OR REPLACE TRIGGER %I AFTER UPDATE ON %I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION aether_rpa_enqueue_write()',
+            'aether_rpa_update_' || t, t
         );
         EXECUTE format(
             'CREATE OR REPLACE TRIGGER %I AFTER DELETE ON %I FOR EACH ROW EXECUTE FUNCTION aether_rpa_enqueue_delete()',
